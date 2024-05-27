@@ -1,0 +1,238 @@
+---
+title: "Time Series Data Visualization"
+---
+
+```{r}
+#| code-fold: true
+#| code-summary: 'Importing Libraries'
+#| warning: false
+#| output: false
+library(tidyverse)
+library(ggplot2)
+library(forecast)
+library(astsa) 
+library(xts)
+library(tseries)
+library(fpp2)
+library(fma)
+library(lubridate)
+library(tidyverse)
+library(TSstudio)
+library(quantmod)
+library(tidyquant)
+library(plotly)
+library(ggplot2)
+library(imputeTS)
+library(gridExtra)
+library(reticulate)
+library(readxl)
+#use_python("/usr/local/bin/python3", require = T)
+#knitr::knit_engines$set(python = reticulate::eng_python)
+#py_install("tensorflow")
+```
+
+# Time Series Data Visualization
+
+In time series data visualization, the importance lies in presenting temporal patterns and trends in a clear and comprehensible manner. Effective visualization allows analysts and decision-makers to extract meaningful insights from the data, aiding in better understanding the dynamics of a system over time. The choice of visualization techniques is crucial, as it directly influences the interpretation of patterns within the time series. 
+
+The ability to discern seasonality, identify anomalies, and recognize patterns is vital for making informed predictions and strategic decisions. Furthermore, interactive features in visualizations enable users to delve deeper into the data, offering a dynamic and exploratory experience. 
+
+Ultimately, the clarity and accuracy of time series data visualization contribute significantly to enhancing decision-making processes across various domains, such as finance, healthcare, environmental monitoring and many other areas.
+
+
+::: panel-tabset
+
+## Data Visualization with Stock Data
+
+The following graph shows overall trends in Google (GOOGL), Microsoft (MSFT), and META (META) stock prices.
+
+```{r }
+#| warning: false
+#| code-fold: true
+
+options("getSymbols.warning4.0"=FALSE)
+options("getSymbols.yahoo.warning"=FALSE)
+
+tickers <- c("GOOGL", "MSFT", "META")
+for (i in tickers){
+  getSymbols(i,
+             from = "2012-10-01",
+             to = "2024-01-01")}
+
+x <- list(
+  title = "date"
+)
+y <- list(
+  title = "value"
+)
+
+stock <- data.frame(GOOGL = GOOGL$GOOGL.Adjusted,
+                    MSFT = MSFT$MSFT.Adjusted,
+                    META = META$META.Adjusted)
+
+
+stock <- data.frame(stock,rownames(stock))
+colnames(stock) <- append(tickers,'Dates')
+
+stock$date<-as.Date(stock$Dates,"%Y-%m-%d")
+# head(stock)
+
+################################################
+
+ggplot(stock, aes(x=date)) +
+  geom_line(aes(y=GOOGL, colour="GOOGL"))+
+  geom_line(aes(y=MSFT, colour="MSFT"))+
+  geom_line(aes(y=META, colour="META"))+
+   labs(
+    title = "Stock Prices for the Tech Companies",
+    subtitle = "From 2012 October to 2023 December",
+    x = "Date",
+    y = "Adjusted Closing Prices")+
+    theme(panel.background = element_rect(fill = "white", colour = "grey50"))+
+    guides(colour=guide_legend(title="Tech Companies")) 
+```
+Upon analyzing the visualization, it becomes evident that META stands out as the most volatile stock among the three featured tech companies. Despite an overall upward trajectory in stock prices for these companies spanning from 2013 to 2022, a noteworthy trend emerges post-2022. Following this period, there is a distinctive and rapid decline in the stock prices of all three companies, persisting until 2023. However, a notable shift occurs thereafter, marking the commencement of a gradual recovery in stock prices from 2023 onwards. This intriguing pattern suggests a complex interplay of market dynamics, possibly influenced by external factors or industry-specific events, contributing to the nuanced behavior observed in the stock prices of these tech giants.
+
+
+## Interactive Plot
+
+Hover over the plot to see the difference. 
+ 
+```{r}
+#| warning: false
+#| code-fold: true
+
+g4<- ggplot(stock, aes(x=date)) +
+  geom_line(aes(y=GOOGL, colour="GOOGL"))+
+  geom_line(aes(y=MSFT, colour="MSFT"))+
+  geom_line(aes(y=META, colour="META"))+
+   labs(
+    title = "Stock Prices for the Tech Companies",
+    subtitle = "From 2012 October to 2023 December",
+    x = "Date",
+    y = "Adjusted Closing Prices")+
+    theme(panel.background = element_rect(fill = "white", colour = "grey50"))+
+    guides(colour=guide_legend(title="Tech Companies")) 
+
+
+ggplotly(g4) %>%
+  layout(hovermode = "x")
+```
+
+The visual representation mirrors the previous one; however, for a more detailed exploration of the specific distinctions, you can hover your mouse cursor over any position on the figure. This interactive feature allows you to gain precise insights into variations, providing a dynamic and hands-on experience with the data. By engaging with the figure through mouse-hover interactions, you can uncover nuanced details and gain a deeper understanding of the intricacies within each data point, enhancing the overall interpretative experience.
+
+
+## Ethereum plot using ggplot2
+
+In this example, we use **ggplot2** package present a visualization depicting the fluctuation in Ethereum's adjusted price since September 15, 2021.
+
+```{r}
+#| warning: false
+#| code-fold: true
+
+
+#bitc_ALL <- getSymbols("BTC",auto.assign = FALSE, from = "2020-10-01",src="yahoo")
+# Fetch Ethereum (ETH) data
+eth <- getSymbols("ETH-USD", auto.assign = FALSE, from = "2021-09-15", src = "yahoo")
+
+# Convert data to a data frame
+eth_df <- data.frame(date = index(eth), ETH.Adjusted = Ad(eth))
+
+# Convert date to Date type
+eth_df$date <- as.Date(eth_df$date)
+
+# Print the structure of the data frame
+# str(eth_df)
+
+# Plot with ggplot
+ggplot(eth_df, aes(x = date, y = ETH.USD.Adjusted)) +
+  geom_line(color = "blue") +
+  labs(
+    title = "Ethereum Prices",
+    subtitle = "From September 15, 2021, to the present",
+    x = "Date",
+    y = "Adjusted Prices"
+  ) +
+  theme(panel.background = element_rect(fill = "white", colour = "grey50"))
+
+# Plot with plotly
+fig <- plot_ly(eth_df, x = ~date, y = ~ETH.USD.Adjusted, type = 'scatter', mode = 'lines')
+
+fig <- fig %>% layout(title = "Ethereum Prices")
+fig
+```
+
+From the visualization, it becomes evident that the fluctuation pattern in Ethereum's price closely mirrors the trend observed in the stock prices of the tech companies highlighted in the previous example. To delve into specifics, Ethereum's price exhibited a continuous upward trajectory until the year 2022. However, a distinct shift occurred post-2022, ushering in an overall decline in price. Notably, the downward trend persisted until 2023, after which a recovery phase ensued. It's worth noting, however, that despite the recovery, the price of Ethereum by this point remains below the levels observed in 2022. 
+
+## Ethereum plot using plotly
+
+In this example, we use **plotly** package present a visualization depicting the fluctuation in Ethereum's adjusted price since September 15, 2021.
+
+```{r}
+#| warning: false
+#| code-fold: true
+
+# Plot with plotly
+fig <- plot_ly(eth_df, x = ~date, y = ~ETH.USD.Adjusted, type = 'scatter', mode = 'lines')
+
+fig <- fig %>% layout(title = "Ethereum Prices")
+fig
+```
+
+The plot shows the same pattern as the visualization created by **ggplot2** package. But one advantage of **plotly** package is that the audience can check the detailed number by clicking the point within the figure to get exact data to analyze.
+
+## Ethereum candlestick plot
+
+In this example, we use candlestick plot to depict the intraday price fluctuations, using Ethereum as an example. 
+
+```{r}
+#| warning: false
+#| code-fold: true
+
+#plotly
+# candlestick plot
+
+eth1 <- data.frame(date = index(eth), coredata(eth))
+df <- tail(eth1, 30)
+colnames(df) <- make.names(colnames(df))
+
+figc <- df %>% plot_ly(x = ~date, type="candlestick",
+          open = ~ETH.USD.Open, close = ~ETH.USD.Close,
+          high = ~ETH.USD.High, low = ~ETH.USD.Low) 
+figc <- figc %>% layout(title = "Ethereum Candlestick Plot")
+figc
+```
+
+Through a comprehensive analysis of the visualization, the intraday change trends in stock become distinctly discernible. The color scheme aids in this interpretation: the red candlesticks denote instances where the closing price is lower than the opening price, while the green counterparts signify a close higher than the open. The length of each candlestick serves as an insightful indicator, with longer candlesticks suggesting more pronounced price fluctuations on a given day, and smaller ones indicative of relative stability. Simultaneously, the placement of points along the line graph signifies the highest and lowest prices of the stock within a specific day, providing further depth for analytical considerations. This multifaceted representation empowers observers to glean valuable insights into the dynamic nature of intraday stock price movements.
+
+## Macroeconomic indicators plot
+
+In this illustrative scenario, we specifically curate data from the National Data section of the [BEA Government Website](https://apps.bea.gov/iTable/?reqid=19&step=2&isuri=1&categories=survey&_gl=1*1dbp3gj*_ga*MTEwNjU0NTE0OC4xNzA1NjQ0NDk2*_ga_J4698JNNFT*MTcwNTY0NDQ5Ni4xLjEuMTcwNTY0NDU4OS40My4wLjA.#eyJhcHBpZCI6MTksInN0ZXBzIjpbMSwyLDNdLCJkYXRhIjpbWyJjYXRlZ29yaWVzIiwiU3VydmV5Il0sWyJOSVBBX1RhYmxlX0xpc3QiLCIxIl1dfQ==). This dataset intricately captures the seasonally adjusted percentage change from the preceding period in real Gross Domestic Product (GDP) and Personal Consumption Expenditures. Leveraging the capabilities of the **plotly** package, we construct dynamic visualizations that articulate the trends inherent in these critical economic indicators over time.
+
+
+```{r}
+#| warning: false
+#| code-fold: true
+
+data <- read.csv('indicator.csv')
+
+# Create a line chart
+fig <- plot_ly(data, x = ~paste(Year, Quarter, sep = "-")) %>%
+  add_lines(y = ~GDP, name = "GDP") %>%
+  add_lines(y = ~PCE, name = "PCE") %>%
+  layout(
+    title = "Percent Change From Preceding Period in GDP and Personal Consumption \n
+    Expenditure Trends Over Quarters in the US",
+    xaxis = list(title = "Year-Quarter"),
+    yaxis = list(title = "Percentage"),
+    showlegend = TRUE
+  )
+
+# Display the plot
+fig
+```
+ 
+
+Upon close examination of this visualization, a recurring trend becomes apparent: both Gross Domestic Product (GDP) and personal consumption exhibit consistent increases throughout the depicted timeline, barring an exception in the first and second quarters of 2022. A noteworthy observation surfaces as well, unveiling an intriguing pattern: the percentage of increase observed before the year 2022 surpasses that witnessed after 2022. This disparity in growth rates delineates a distinctive shift in the economic dynamics, prompting further exploration into the factors influencing these fluctuations and their potential implications.
+
+:::

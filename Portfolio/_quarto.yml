@@ -1,0 +1,30 @@
+project:
+  type: website
+
+website:
+  title: "Portfolio -- Time Series"
+  navbar:
+    left:
+      - href: index.qmd
+        text: Time Series
+      - dv.qmd
+      - aboutme.qmd
+      - introduction.qmd
+      - data_source.qmd
+      - data_viz.qmd
+      - EDA.qmd
+      - UT.qmd
+      - MT.qmd
+      - FTS.qmd
+      - DL.qmd
+      - other.qmd
+      - conclusions.qmd
+
+format:
+  html:
+    theme: lumen
+    css: styles.css
+    toc: true
+
+
+

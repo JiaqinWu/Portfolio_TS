@@ -1,0 +1,833 @@
+---
+title: "FTS Models"
+format:  
+  html:
+   embed-resources: true
+   code-fold: true
+---
+
+```{r, echo=FALSE,message=FALSE,warning=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(forecast)
+library(astsa) 
+library(xts)
+library(tseries)
+library(fpp2)
+library(fma)
+library(lubridate)
+library(tidyverse)
+library(TSstudio)
+library(quantmod)
+library(tidyquant)
+library(plotly)
+library(ggplot2)
+library(TSA)
+library(fGarch) 
+library(dynlm)
+library(gridExtra)
+library(FinTS)
+library(fGarch)
+```
+
+# 1. Introduction
+In this section, I will analyze financial time series data related to the COVID-19 pandemic. The time series data will consist of stocks from companies directly involved with COVID-19 or its vaccination efforts. Specifically, I will focus on **Pfizer (PFE)** and **BioNTech SE (BNTX)** due to their significant roles in developing and distributing COVID-19 vaccines.
+
+### Pfizer and Their COVID-19 Vaccine
+
+Pfizer, a longstanding giant in the pharmaceutical industry, played a pivotal role during the COVID-19 pandemic through the development and distribution of a highly effective vaccine. Partnering with BioNTech, a German biotechnology company, Pfizer developed one of the first mRNA-based vaccines, which was granted emergency use authorization by the FDA in December 2020. This vaccine, branded as Comirnaty, showcased a new approach in vaccine technology with remarkable efficacy rates above 90% in preventing COVID-19 infection. Pfizer's vaccine not only marked a significant scientific milestone but also became a critical tool in global efforts to combat the pandemic, leading to substantial impacts on its stock valuation.
+
+### BioNTech SE and Their COVID-19 Vaccine
+
+BioNTech SE, while not as widely recognized globally as Pfizer before the pandemic, quickly became a household name due to its collaboration with Pfizer in developing the Comirnaty COVID-19 vaccine. Specializing in mRNA technology, BioNTech's innovative approach was crucial in the rapid development and success of the vaccine. The company, founded in 2008, focused on patient-specific immunotherapies for cancer before pivoting to infectious diseases, which positioned it uniquely for the swift response to COVID-19. The collaboration with Pfizer not only accelerated the vaccine's development and distribution but also significantly enhanced BioNTech's market profile and stock performance.
+
+To conduct the time series analysis of the financial data from Pfizer and BioNTech, I will employ ARCH (Autoregressive Conditional Heteroskedasticity) and GARCH (Generalized Autoregressive Conditional Heteroskedasticity) models. These models are well-suited for studying financial market data as they effectively model the changing volatility, a common characteristic of stock return data. By analyzing the volatility of the returns for both PFE and BNTX stocks, we can gain insights into how market perceptions of these companies' roles in addressing the COVID-19 crisis have influenced their stock prices over time.
+
+# 2. Plotting Data
+
+::: panel-tabset
+### Pfizer 
+
+```{r, message=FALSE, warning=FALSE}
+pfe <- getSymbols("PFE",auto.assign = FALSE, from = "2014-01-01",src="yahoo")
+
+chartSeries(pfe, theme = chartTheme("white"),
+            bar.type = "hlc",  
+            up.col = "green",  
+            dn.col = "red") 
+```
+
+The plot is a candlestick chart of Pfizer's stock price from January 2014 to April 2024. Over this decade, the stock price shows a general upward trend until early 2021, with some volatility but consistently higher peaks and troughs, indicating growth over time. Notably, there is a sharp increase in stock price beginning around 2020, which could correlate with the development and deployment of Pfizer’s COVID-19 vaccine. After reaching a peak in early 2021, the stock exhibits a significant decline. The high trading volume spike at the beginning of 2021 suggests a period of high investor interest, potentially due to vaccine-related news. Following this, the price begins a consistent downward trend, falling to levels below the pre-2020 range. This decline could be indicative of market saturation, vaccine rollout completion, or shifting investor sentiment. As of the last recorded point, the stock price stands at approximately $26.78, which is lower than the previous years’ highs, highlighting a notable retraction from the peak seen during the height of the pandemic response.
+
+### BioNTech SE 
+
+```{r, message=FALSE, warning=FALSE}
+bntx <- getSymbols("BNTX",auto.assign = FALSE, from = "2014-01-01",src="yahoo")
+
+chartSeries(bntx, theme = chartTheme("white"),
+            bar.type = "hlc",  
+            up.col = "green",  
+            dn.col = "red") 
+```
+The chart depicts the stock price movement for BioNTech SE from October 2019 to April 2024, which shows a remarkable volatility pattern. Initially, the stock price shows a gradual upward trend, but then experiences a significant surge starting around 2020, likely in response to its role in COVID-19 vaccine development and anticipation of profits from the vaccine. This surge peaks sharply, reaching the highest point in the observed period, indicative of intense investor optimism. Following this peak, the stock enters a period of decline and heightened volatility, eventually stabilizing but at a much lower price level than the peak. By April 2024, the price has settled at around $90, which, while lower than the high, still represents a substantial increase from the early days of trading. The trading volume shows several spikes, the largest of which coincides with the peak stock price, suggesting periods of significant investor activity possibly driven by news events or milestones in the company’s vaccine development and sales. The general trend, after the initial peak, shows that the excitement and speculation that drove the initial rise have tempered, leading to a more stable but lower stock price as the market adjusts to the new norm post-vaccine rollout.
+
+:::
+
+
+# 3. Model Fitting
+
+::: panel-tabset
+### Pfizer 
+
+```{r, message=FALSE, warning=FALSE}
+pfets <- ts(pfe$PFE.Adjusted, start=decimal_date(as.Date("2014-01-02")), frequency = 365.25)
+
+returns_pfe = log(pfets) %>% diff()
+summary(returns_pfe)
+
+autoplot(returns_pfe, color="#5a3196") + theme_bw() +ggtitle("Pfizer Stock Price Returns")
+```
+
+Returns fluctuate above and below a return of zero, with no clear long-term trend suggesting sustained periods of significant gains or losses. The plot indicates a high level of volatility, as seen by the spikes particularly in the later years around 2020, which could be associated with market reactions to the development and distribution of Pfizer's COVID-19 vaccine. The fact that the returns oscillate without a clear directional trend implies that while there are periods of positive and negative returns, they tend to offset each other over this timeframe, suggesting a riskier investment during certain periods and the potential for short-term gains or losses.
+
+### BioNTech SE 
+
+```{r, message=FALSE, warning=FALSE}
+bntxts <- ts(bntx$BNTX.Adjusted, start=decimal_date(as.Date("2019-10-10")), frequency = 365.25)
+
+returns_bntx = log(bntxts) %>% diff()
+summary(returns_bntx)
+
+autoplot(returns_bntx, color="#5a3196") + theme_bw() +ggtitle("BioNTech SE Stock Price Returns")
+```
+The plot displays the daily stock price returns for BioNTech SE. Notably, there are periods of extreme volatility, as seen by the tall spikes, especially in early 2020, which likely correspond to the initial phases of the COVID-19 pandemic and the associated developments in BioNTech’s vaccine. As time progresses, the volatility seems to decrease somewhat, with the fluctuations in returns becoming less extreme, suggesting that the market has started to stabilize after the initial shocks. However, even with reduced volatility, the returns still show no consistent trend upward or downward over the entire time frame, indicating that while the extreme uncertainty may have subsided, the stock still experiences regular shifts in investor sentiment and market reaction to new information.
+
+:::
+
+
+# 4. ACF and PACF Plots
+
+## 4.1 Returns
+::: panel-tabset
+### Pfizer 
+
+```{r, message=FALSE, warning=FALSE}
+ggAcf(returns_pfe,40) + theme_bw()
+ggPacf(returns_pfe,40) + theme_bw()
+```
+
+We can see for both ACF anf PACF plots, the Pfizer data is very weakly stationary. The possible q and p values would both be q and p = 3,9,10. 
+
+### BioNTech SE 
+
+```{r, message=FALSE, warning=FALSE}
+ggAcf(returns_bntx,40) + theme_bw()
+ggPacf(returns_bntx,40) + theme_bw()
+```
+We can see for both ACF anf PACF plots, the BioNTech SE data is very weakly stationary. The possible q and p values would both be q and p = 9,32. Most of these are again too high, so we would have to likely consider p and q 0,9. 
+
+:::
+
+## 4.2 Absolute Returns
+
+::: panel-tabset
+### Pfizer 
+
+```{r, message=FALSE, warning=FALSE}
+ggAcf(abs(returns_pfe),40) + theme_bw()
+ggPacf(abs(returns_pfe),40) + theme_bw()
+```
+
+The analysis of absolute returns for Pfizer stock reveals a stable pattern in the ACF plot, with the first 40 lags exhibiting significant autocorrelation. This suggests a strong and consistent relationship in the data's movements over these intervals. Conversely, the PACF plot indicates a more contained range of significant lags. Here, only the first 8, along with the 11th and 15th lags, show significant partial autocorrelation. 
+
+### BioNTech SE 
+
+```{r, message=FALSE, warning=FALSE}
+ggAcf(abs(returns_bntx),40) + theme_bw()
+ggPacf(abs(returns_bntx),40) + theme_bw()
+```
+The analysis of absolute returns for BioNTech SE stock reveals a stable pattern in the ACF plot, with the first 40 lags exhibiting significant autocorrelation. This suggests a strong and consistent relationship in the data's movements over these intervals. Conversely, the PACF plot indicates a more contained range of significant lags. Here, only the first 3, along with the 5th, 8th and 9th lags, show significant partial autocorrelation. 
+
+:::
+
+## 4.3 Squared Returns
+
+::: panel-tabset
+### Pfizer 
+
+```{r, message=FALSE, warning=FALSE}
+ggAcf(returns_pfe^2,40) + theme_bw()
+ggPacf(returns_pfe^2,40) + theme_bw()
+```
+
+Squared returns are less stationary than absolute returns but more stationary than only returns. For Pfizer ACF plot, significant lags are 1 through 21 and PACF plot had significant lags are 1 to 5, 8, 11, and 14.
+
+### BioNTech SE 
+
+```{r, message=FALSE, warning=FALSE}
+ggAcf(returns_bntx^2,40) + theme_bw()
+ggPacf(returns_bntx^2,40) + theme_bw()
+```
+Squared returns are less stationary than absolute returns but more stationary than only returns. For BioNTech SE ACF plot, significant lags are 1 through 7 and PACF plot had significant lags are 1 through 6.
+
+:::
+
+# 5. ARCH Test
+
+In this section, the ARCH Lagrange Multiplier (LM) test will be employed to examine the returns data for autoregressive conditional heteroskedasticity (ARCH) effects. The null hypothesis of the LM test posits the absence of ARCH effects in the time series data. By setting the significance threshold at 0.05, if the test statistics fall beyond this critical value, we will have sufficient evidence to reject the null hypothesis. Should this occur, it would indicate that an ARCH(1) effect is present, suggesting that the data exhibits volatility clustering, where periods of high volatility are followed by high volatility, and periods of low volatility are followed by low volatility.
+
+::: panel-tabset
+### Pfizer 
+
+```{r, message=FALSE, warning=FALSE}
+ArchTest(returns_pfe, lags=1, demean=TRUE)
+```
+
+The result of the ARCH LM test for Pfizer's return data indicates a Chi-squared statistic of 176.57 with 1 degree of freedom. The p-value is less than 2.2e-16, which is substantially below the 0.05 significance level. So we can reject the null hypothesis that there are no ARCH effects in the returns data. The extremely low p-value suggests that the presence of ARCH effects is highly statistically significant. This finding has important implications for financial modeling and risk management, indicating that the assumption of constant volatility is not suitable for this time series data.
+
+### BioNTech SE 
+
+```{r, message=FALSE, warning=FALSE}
+ArchTest(returns_bntx, lags=1, demean=TRUE)
+```
+
+The result of the ARCH LM test for BioNTech SE's return data indicates a Chi-squared statistic of 326.66 with 1 degree of freedom. The p-value is less than 2.2e-16, which is substantially below the 0.05 significance level. So we can reject the null hypothesis that there are no ARCH effects in the returns data. The extremely low p-value suggests that the presence of ARCH effects is highly statistically significant. This finding has important implications for financial modeling and risk management, indicating that the assumption of constant volatility is not suitable for this time series data.
+
+:::
+
+
+# 6. ARIMA Model Fitting
+
+Having examined the ACF and the PACF plots, the next step in the analysis involves constructing an ARIMA model. This model will be tailored based on the insights gathered from the ACF/PACF plots, with the aim to capture the underlying patterns in the return series. Subsequently, I will apply a GARCH (Generalized Autoregressive Conditional Heteroskedasticity) model to the residuals of the ARIMA model. This two-step methodology leverages the ARIMA model to address the serial correlation in the data, and the GARCH model to capture the volatility clustering often observed in financial time series. This sequential approach will provide a comprehensive understanding of the dynamics at play in the returns of the stock.
+
+::: panel-tabset
+### Pfizer 
+
+Using the Pfizer returns, I will find the best performing ARIMA model according to AIC. Recall that the lag values for this were p = 1 to 5 d = 0, 1 and q = 1 to 5. Since the ACF/PACF plots mostly stationarity, there is no need to difference the data.
+
+```{r, message=FALSE, warning=FALSE}
+ARIMA.c=function(p1,p2,q1,q2,data){
+temp=c()
+d=1
+i=1
+temp= data.frame()
+ls=matrix(rep(NA,6*50),nrow=50)
+
+
+for (p in p1:p2)#
+{
+  for(q in q1:q2)#
+  {
+    for(d in 0:1)#
+    {
+      
+      if(p+d+q<=6)
+      {
+        
+        model<- Arima(data,order=c(p,d,q))
+        ls[i,]= c(p,d,q,model$aic,model$bic,model$aicc)
+        i=i+1
+  
+        
+      }
+      
+    }
+  }
+}
+
+
+temp= as.data.frame(ls)
+names(temp)= c("p","d","q","AIC","BIC","AICc")
+
+temp
+}
+
+output <- ARIMA.c(1,5,1,5,data=returns_pfe) #just using log prices
+output
+
+output[which.min(output$AIC),] 
+output[which.min(output$BIC),] 
+output[which.min(output$AICc),] 
+```
+
+The best ARIMA model according to the lowest AIC is ARIMA(3,0,2)
+
+```{r, message=FALSE, warning=FALSE}
+fit_pfe <- Arima(returns_pfe,order=c(3,0,2))
+summary(fit_pfe)
+```
+Several of the coefficients within the model display significance levels exceeding the conventional threshold of 0.05. This suggests that there is insufficient evidence to confidently assert that these coefficients have a meaningful impact on the dependent variable within the context of this model.
+
+
+### BioNTech SE 
+
+Using the BioNTech SE returns, I will find the best performing ARIMA model according to AIC. Recall that the lag values for this were p = 1 to 5 d = 0, 1 and q = 1 to 5. Since the ACF/PACF plots mostly stationarity, there is no need to difference the data.
+
+```{r, message=FALSE, warning=FALSE}
+output <- ARIMA.c(1,5,1,5,data=returns_bntx) #just using log prices
+output
+
+output[which.min(output$AIC),] 
+output[which.min(output$BIC),] 
+output[which.min(output$AICc),] 
+
+```
+
+The best ARIMA model according to the lowest AIC is ARIMA(2,0,1)
+
+```{r, message=FALSE, warning=FALSE}
+fit_bntx <- Arima(returns_bntx,order=c(2,0,1))
+summary(fit_bntx)
+```
+
+Several of the coefficients within the model display significance levels exceeding the conventional threshold of 0.05. This suggests that there is insufficient evidence to confidently assert that these coefficients have a meaningful impact on the dependent variable within the context of this model.
+
+:::
+
+
+# 7. Residuals Analysis
+
+::: panel-tabset
+### Pfizer 
+
+```{r, message=FALSE, warning=FALSE}
+sarima(returns_pfe,3,0,2)
+```
+Examining the Standardized Residuals plot from the model, we observe notable fluctuations remaining. Evidently, peaks of volatility emerge, notably around the years 2015, 2018, and 2020. To validate this observation, we'll further investigate by plotting the ACF and PACF of the residuals.
+
+```{r, message=FALSE, warning=FALSE}
+pfe.res<-fit_pfe$residuals
+
+plot1<-ggAcf(pfe.res, 40) + theme_bw()+
+      theme(plot.background = element_rect(fill = "#D9E3F1", color = NA),
+            panel.background = element_rect(fill = "#D9E3F1", color = NA)) 
+plot2<- ggPacf(pfe.res, 40)+theme_bw()+
+      theme(plot.background = element_rect(fill = "#D9E3F1", color = NA),
+            panel.background = element_rect(fill = "#D9E3F1", color = NA)) 
+
+grid.arrange(plot1, plot2,nrow=2)
+
+plot1<-ggAcf(pfe.res^2, 40) + theme_bw()+
+      theme(plot.background = element_rect(fill = "#D9E3F1", color = NA),
+            panel.background = element_rect(fill = "#D9E3F1", color = NA)) 
+plot2<- ggPacf(pfe.res^2, 40)+theme_bw()+
+      theme(plot.background = element_rect(fill = "#D9E3F1", color = NA),
+            panel.background = element_rect(fill = "#D9E3F1", color = NA)) 
+
+grid.arrange(plot1, plot2,nrow=2)
+```
+
+It seems there is a robust correlation observed at lag 1, 2, 3, 4, and beyond, suggesting that additional correlation may exist and could be captured by employing a GARCH model on the residuals. Utilizing a GARCH model becomes imperative in this scenario.
+
+
+### BioNTech SE 
+
+```{r, message=FALSE, warning=FALSE}
+sarima(returns_bntx,2,0,1)
+```
+Examining the Standardized Residuals plot from the model, we observe notable fluctuations remaining. Evidently, peaks of volatility emerge, notably around the year 2020. To validate this observation, we'll further investigate by plotting the ACF and PACF of the residuals.
+
+```{r, message=FALSE, warning=FALSE}
+bntx.res<-fit_bntx$residuals
+
+plot1<-ggAcf(bntx.res, 40) + theme_bw()+
+      theme(plot.background = element_rect(fill = "#D9E3F1", color = NA),
+            panel.background = element_rect(fill = "#D9E3F1", color = NA)) 
+plot2<- ggPacf(bntx.res, 40)+theme_bw()+
+      theme(plot.background = element_rect(fill = "#D9E3F1", color = NA),
+            panel.background = element_rect(fill = "#D9E3F1", color = NA)) 
+
+grid.arrange(plot1, plot2,nrow=2)
+
+plot1<-ggAcf(bntx.res^2, 40) + theme_bw()+
+      theme(plot.background = element_rect(fill = "#D9E3F1", color = NA),
+            panel.background = element_rect(fill = "#D9E3F1", color = NA)) 
+plot2<- ggPacf(bntx.res^2, 40)+theme_bw()+
+      theme(plot.background = element_rect(fill = "#D9E3F1", color = NA),
+            panel.background = element_rect(fill = "#D9E3F1", color = NA)) 
+
+grid.arrange(plot1, plot2,nrow=2)
+```
+It seems there is a robust correlation observed at lag 1, 2, 3, and 4, suggesting that additional correlation may exist and could be captured by employing a GARCH model on the residuals. Utilizing a GARCH model becomes imperative in this scenario.
+
+:::
+
+
+# 8. Method 1: GARCH Model on ARIMA Residuals
+
+The preceding section revealed that conventional ARIMA models failed to adequately capture the correlation within volatility clusters for both Pfizer and BioNTech SE returns. Despite employing ARIMA modeling techniques, the examination of standardized residuals and autocorrelation (ACF/PACF) plots unveiled substantial remaining correlation. Consequently, I intend to apply a GARCH model to the residuals and identify the optimal model based on the AIC.
+
+::: panel-tabset
+### Pfizer 
+
+```{r, message=FALSE, warning=FALSE}
+model <- list() ## set counter
+cc <- 1
+for (p in 1:7) {
+  for (q in 1:7) {
+  
+model[[cc]] <- garch(pfe.res,order=c(q,p),trace=F)
+cc <- cc + 1
+}
+} 
+
+## get AIC values for model evaluation
+GARCH_AIC <- sapply(model, AIC) ## model with lowest AIC is the best
+which(GARCH_AIC == min(GARCH_AIC))
+```
+
+The best model according to AIC is:
+
+```{r, message=FALSE, warning=FALSE}
+model[[which(GARCH_AIC == min(GARCH_AIC))]]
+```
+
+The most optimal model, indicated by the smallest AIC, is the GARCH(1,1) model. In the subsequent code, I will delve into the diagnostics of this top-performing model from the previous section. Should the evaluation metrics, including significance levels, fall short of expectations, I will consider training an alternative GARCH model.
+
+```{r, message=FALSE, warning=FALSE}
+summary(garchFit(~garch(1,1), pfe.res,trace = F))
+```
+
+All of the coefficients are significant for GARCH(1,1). Thus the best model according to method 1 for the Pfizer returns is ARIMA(3,0,2) + GARCH(1,1).
+
+
+### BioNTech SE 
+
+```{r, message=FALSE, warning=FALSE}
+model <- list() ## set counter
+cc <- 1
+for (p in 1:7) {
+  for (q in 1:7) {
+  
+model[[cc]] <- garch(bntx.res,order=c(q,p),trace=F)
+cc <- cc + 1
+}
+} 
+
+## get AIC values for model evaluation
+GARCH_AIC <- sapply(model, AIC) ## model with lowest AIC is the best
+which(GARCH_AIC == min(GARCH_AIC))
+```
+
+The best model according to AIC is:
+
+```{r, message=FALSE, warning=FALSE}
+model[[which(GARCH_AIC == min(GARCH_AIC))]]
+```
+
+The most optimal model, indicated by the smallest AIC, is the GARCH(6,7) model. In the subsequent code, I will delve into the diagnostics of this top-performing model from the previous section. Should the evaluation metrics, including significance levels, fall short of expectations, I will consider training an alternative GARCH model.
+
+```{r, message=FALSE, warning=FALSE}
+summary(garchFit(~garch(6,7), bntx.res,trace = F))
+```
+
+We can see from the table above that some coefficients are not significant. I am going to try simpler model like GARCH(1,2) next.
+
+```{r, message=FALSE, warning=FALSE}
+summary(garchFit(~garch(1,2), bntx.res,trace = F))
+```
+
+
+All of the coefficients are significant for GARCH(1,2). Thus the best model according to method 1 for the BioNTech SE returns is ARIMA(2,0,1) + GARCH(1,2).
+
+
+:::
+
+# 9. Method 2: GARCH Model
+
+Despite the notable coefficients observed for the GARCH model in Method 1, the ARIMA model initially lacked significant coefficients. Hence, I am inclined to explore Method 2, which entails directly fitting the GARCH model on the returns.
+
+::: panel-tabset
+### Pfizer 
+
+```{r, message=FALSE, warning=FALSE}
+model <- list() ## set counter
+cc <- 1
+for (p in 1:7) {
+  for (q in 1:7) {
+  
+model[[cc]] <- garch(pfe.res,order=c(q,p),trace=F)
+cc <- cc + 1
+}
+} 
+
+## get AIC values for model evaluation
+GARCH_AIC <- sapply(model, AIC) ## model with lowest AIC is the best
+which(GARCH_AIC == min(GARCH_AIC))
+```
+
+The best model according to AIC is:
+
+```{r, message=FALSE, warning=FALSE}
+model[[which(GARCH_AIC == min(GARCH_AIC))]]
+```
+
+The most optimal model, indicated by the smallest AIC, is the GARCH(1,1) model. In the subsequent code, I will delve into the diagnostics of this top-performing model from the previous section. Should the evaluation metrics, including significance levels, fall short of expectations, I will consider training an alternative GARCH model.
+
+```{r, message=FALSE, warning=FALSE}
+summary(garchFit(~garch(1,1), pfe.res,trace = F))
+```
+
+All of the coefficients are significant for GARCH(1,1). Thus the best model according to method 2 for the Pfizer returns is GARCH(1,1).
+
+### BioNTech SE 
+
+```{r, message=FALSE, warning=FALSE}
+model <- list() ## set counter
+cc <- 1
+for (p in 1:7) {
+  for (q in 1:7) {
+  
+model[[cc]] <- garch(bntx.res,order=c(q,p),trace=F)
+cc <- cc + 1
+}
+} 
+
+## get AIC values for model evaluation
+GARCH_AIC <- sapply(model, AIC) ## model with lowest AIC is the best
+which(GARCH_AIC == min(GARCH_AIC))
+```
+
+The best model according to AIC is:
+
+```{r, message=FALSE, warning=FALSE}
+model[[which(GARCH_AIC == min(GARCH_AIC))]]
+```
+
+The most optimal model, indicated by the smallest AIC, is the GARCH(6,7) model. In the subsequent code, I will delve into the diagnostics of this top-performing model from the previous section. Should the evaluation metrics, including significance levels, fall short of expectations, I will consider training an alternative GARCH model.
+
+```{r, message=FALSE, warning=FALSE}
+summary(garchFit(~garch(6,7), bntx.res,trace = F))
+```
+
+We can see from the table above that some coefficients are not significant. I am going to try simpler model like GARCH(1,1) next.
+
+```{r, message=FALSE, warning=FALSE}
+summary(garchFit(~garch(1,1), bntx.res,trace = F))
+```
+
+
+All of the coefficients are significant for GARCH(1,1). Thus the best model according to method 2 for the BioNTech SE returns is GARCH(1,1).
+
+:::
+
+
+# 10. Model Diagnostics
+
+::: panel-tabset
+### Pfizer 
+
+#### Method 1: ARIMA(3,0,2) + GARCH(1,1)
+
+```{r, message=FALSE, warning=FALSE}
+summary(fit_pfe)
+```
+
+```{r, message=FALSE, warning=FALSE}
+garch_pfe <- garchFit(~garch(1,1), pfe.res,trace = F)
+summary(garch_pfe)
+```
+
+```{r, message=FALSE, warning=FALSE}
+summary(garch(pfe.res, order = c(1,1),trace = F))
+```
+
+```{r, message=FALSE, warning=FALSE}
+checkresiduals(garch(pfe.res, order = c(1,1),trace = F))
+```
+
+#### Method 2: GARCH(1,1)
+
+```{r, message=FALSE, warning=FALSE}
+garch_pfe2 <- garch(returns_pfe, order = c(1,1), trace = F)
+summary(garch_pfe2)
+```
+
+```{r, message=FALSE, warning=FALSE}
+checkresiduals(garch_pfe2)
+```
+
+Based on the model diagnostics of these two models derived from distinct methods, it's evident that their performance is comparable and satisfactory. Both models appear to have good residual plots, with only a few significant lags in the ACF plots. The AIC for both models are low and similar to each other. However, the results for the Ljung-Box test show a p-value over 0.05 for Model 1 and Model 2. This shows that there may still be some correlation not completely captured by the model. The coefficients for the ARIMA model were not all significant, while the coefficients for the GARCH model were all significant. Consequently, we opt to conduct cross-validation in the subsequent section to aid us in determining the optimal model.
+
+### BioNTech SE 
+
+#### Method 1: ARIMA(2,0,1) + GARCH(1,1)
+
+```{r, message=FALSE, warning=FALSE}
+summary(fit_bntx)
+```
+
+```{r, message=FALSE, warning=FALSE}
+garch_bntx <- garchFit(~garch(1,1), bntx.res,trace = F)
+summary(garch_bntx)
+```
+
+```{r, message=FALSE, warning=FALSE}
+summary(garch(bntx.res, order = c(1,1),trace = F))
+```
+
+```{r, message=FALSE, warning=FALSE}
+checkresiduals(garch(bntx.res, order = c(1,1),trace = F))
+```
+
+#### Method 2: GARCH(1,1)
+
+```{r, message=FALSE, warning=FALSE}
+garch_bntx2 <- garch(returns_bntx, order = c(1,1), trace = F)
+summary(garch_bntx2)
+```
+
+```{r, message=FALSE, warning=FALSE}
+checkresiduals(garch_bntx2)
+```
+
+Based on the model diagnostics of these two models derived from distinct methods, it's evident that their performance is comparable and satisfactory. Both models appear to have good residual plots, with only a few significant lags in the ACF plots. The AIC for both models are low and similar to each other. However, the results for the Ljung-Box test show a p-value over 0.05 for Model 1 and Model 2. This shows that there may still be some correlation not completely captured by the model. The coefficients for the ARIMA model were not all significant, while the coefficients for the GARCH model were all significant. Consequently, we opt to conduct cross-validation in the subsequent section to aid us in determining the optimal model.
+
+
+:::
+
+# 11. Cross-Validation
+
+::: panel-tabset
+### Pfizer 
+
+```{r, message=FALSE, warning=FALSE}
+k <- 700 # minimum data length for fitting a model 3324*.2 (20%)
+n <- length(returns_pfe)
+n-k 
+
+i=1
+err1 = c()
+err2 = c()
+
+rmse1=c()
+rmse2=c()
+
+for(i in 1:100)
+{
+  xtrain <- returns_pfe[1:(k-1)+i] 
+  xtest <- returns_pfe[k+i] 
+
+  # ARIMA(3,0,2) + GARCH(1,1)
+  arima.fit<-Arima(xtrain,order=c(3,0,2),include.drift = TRUE)
+  arima.res <- residuals(arima.fit)
+  fit1 <- garchFit(~garch(1,1), arima.res,trace = F)
+  fcast1 <- predict(fit1, n.ahead=1)
+  
+  # GARCH(1,1)
+  returns=diff(xtrain)
+  fit2 <- garchFit(~garch(1,1), data = returns, trace = F) #this is fitted for returns
+  fcast2 <- predict(fit2, n.ahead=1)
+  
+  
+  err1 = c(err1, (fcast1$meanForecast-xtest)^2)
+  err2 = c(err2, (fcast2$meanForecast-xtest)^2)
+
+  
+}
+
+RMSE1=sqrt(mean(err1)) 
+RMSE2=sqrt(mean(err2))
+
+RMSE1
+RMSE2
+```
+
+Best Model: The two models identified by the methods were Model 1: ARIMA(3,0,2) + GARCH(1,1) and Model 2: GARCH(1,1). After performing cross-validation, we can see that Model 2 had the lowest RMSE. Therefore, the best model according to diagnostics is Model 2: GARCH(1,1).
+
+
+### BioNTech SE 
+
+```{r, message=FALSE, warning=FALSE}
+k <- 400 # minimum data length for fitting a model 3324*.2 (20%)
+n <- length(returns_bntx)
+n-k 
+
+i=1
+err1 = c()
+err2 = c()
+
+rmse1=c()
+rmse2=c()
+
+for(i in 1:100)
+{
+  xtrain <- returns_bntx[1:(k-1)+i] 
+  xtest <- returns_bntx[k+i] 
+
+  # ARIMA(2,0,1) + GARCH(1,1)
+  arima.fit<-Arima(xtrain,order=c(2,0,1),include.drift = TRUE)
+  arima.res <- residuals(arima.fit)
+  fit1 <- garchFit(~garch(1,1), arima.res,trace = F)
+  fcast1 <- predict(fit1, n.ahead=1)
+  
+  # GARCH(1,1)
+  returns=diff(xtrain)
+  fit2 <- garchFit(~garch(1,1), data = returns, trace = F) #this is fitted for returns
+  fcast2 <- predict(fit2, n.ahead=1)
+  
+  
+  err1 = c(err1, (fcast1$meanForecast-xtest)^2)
+  err2 = c(err2, (fcast2$meanForecast-xtest)^2)
+
+  
+}
+
+RMSE1=sqrt(mean(err1)) 
+RMSE2=sqrt(mean(err2))
+
+RMSE1
+RMSE2
+```
+
+Best Model: The two models identified by the methods were Model 1: ARIMA(2,0,1) + GARCH(1,1) and Model 2: GARCH(1,1). After performing cross-validation, we can see that Model 2 had the lowest RMSE. Therefore, the best model according to diagnostics is Model 2: GARCH(1,1).
+
+:::
+
+# 12. Final Model Fitting
+
+We fitted the final model with the best performance.
+
+::: panel-tabset
+### Pfizer 
+
+```{r, message=FALSE, warning=FALSE}
+garch_pfe3 <- garchFit(~garch(1,1), returns_pfe,trace = F)
+summary(garch_pfe3)
+```
+
+Based on the Ljung-Box test:
+
+1. **Ljung-Box Test for Residuals (R):**
+   - For lags Q(10), Q(15), and Q(20), the p-values are 0.70060151, 0.87494061, and 0.79038025, respectively. Since all these p-values are well above the common significance level of 0.05, we do not reject the null hypothesis that there is no autocorrelation in the residuals at these lags. This suggests that the model residuals are independent at the 10, 15, and 20 lag intervals, which is an indication of a good model fit.
+
+2. **Ljung-Box Test for Squared Residuals (R^2):**
+   - The test results for squared residuals, which are used to check for autocorrelation in the volatility (variance) of the residuals, show a different picture. For Q(10) and Q(15), the p-values are 0.02990460 and 0.03974478, which are below the 0.05 threshold, indicating that there is significant autocorrelation in the squared residuals at these lags. This could be a sign of heteroskedasticity or volatility clustering, suggesting that a model that accounts for changing variance over time, like GARCH, might be more appropriate.
+   - However, at lag Q(20), the p-value is 0.14475310, which is above 0.05, suggesting no significant autocorrelation in the volatility at this lag interval.
+
+3. **LM Arch Test:**
+   - The Lagrange Multiplier (LM) test for autoregressive conditional heteroskedasticity (ARCH) effects, indicated by a p-value of 0.03268196, also points to the presence of heteroskedasticity in the residuals.
+
+4. **Jarque-Bera and Shapiro-Wilk Tests:**
+   - Both tests have very low p-values, effectively 0, rejecting the null hypothesis of normality. This indicates that the residuals are not normally distributed, which is a common assumption in many modeling scenarios.
+
+The Ljung-Box test results on the residuals (R) suggest the model captures the central tendency (mean) of the data well, but the tests on squared residuals (R^2) and the LM Arch test reveal that the model may not be adequately capturing the variance in the data. This could imply that the time series has conditional heteroskedasticity that the current model does not account for. It might be beneficial to consider a model that can model such characteristics, like a GARCH model, especially since the residuals do not appear to be normally distributed.
+
+### BioNTech SE 
+
+```{r, message=FALSE, warning=FALSE}
+garch_bntx3 <- garchFit(~garch(1,1), returns_bntx,trace = F)
+summary(garch_bntx3)
+```
+
+The Ljung-Box test results provided for the residuals of your model show p-values well above the common significance level of 0.05 for Q(10), Q(15), and Q(20). This implies that there is no significant autocorrelation at the first 10, 15, or 20 lags of the residuals, indicating that the model captures the data's time series structure quite well.
+
+However, when you square the residuals (possibly to check for heteroscedasticity or nonlinearity), the Ljung-Box test results on R^2 indicate that there may be some structure left in the squared residuals. Specifically, the p-values for Q(15) and Q(20) are approaching the threshold of 0.05, suggesting that there could be some autocorrelation in the volatility of the series (conditional heteroscedasticity).
+
+The Jarque-Bera and Shapiro-Wilk tests reject the null hypothesis of the residuals' normality with very small p-values. This indicates that the residuals do not follow a normal distribution, which can be critical if the statistical inference of subsequent analysis relies on the assumption of normally distributed errors.
+
+The LM Arch Test, with a p-value above 0.05, suggests there is no significant autoregressive conditional heteroscedasticity (ARCH) effects in the residuals.
+
+Considering the information criteria statistics (AIC, BIC, SIC, HQIC), which are measures of the relative quality of the statistical model for a given set of data, lower values generally indicate a better-fitting model. However, these need to be compared across different models to select the best among them.
+
+In summary, while the Box Ljung test results suggest that the model captures the linear dependencies of the data well, the tests for normality and the borderline p-values for the squared residuals' autocorrelation suggest that the model residuals are not normally distributed, and there might be some remaining non-linear dependencies in the data. This could mean that while the model's linear specification seems appropriate, further investigation into potential nonlinearity or heteroscedasticity in the series might be warranted.
+
+:::
+
+
+
+
+# 13. Final Model Selection & Forecasting
+
+Then we used the final model to forecast the future trend of stock prices.
+
+::: panel-tabset
+### Pfizer 
+
+```{r, message=FALSE, warning=FALSE}
+garch_pfe3 <- garchFit(~garch(1,1), returns_pfe,trace = F)
+predict(garch_pfe3, n.ahead = 100, plot=TRUE)
+```
+
+Our Pfizer model forcasting can be evaluated using several factors. For example, the widening confidence intervals with increasing forecast horizon suggest greater uncertainty further into the future. The plot suggests that future values are expected to continue at the current level with a slight drift, and the symmetrical confidence intervals imply an assumption of normally distributed forecast errors.
+
+### BioNTech SE 
+
+```{r, message=FALSE, warning=FALSE}
+garch_bntx3 <- garchFit(~garch(1,1), returns_bntx,trace = F)
+predict(garch_bntx3, n.ahead = 100, plot=TRUE)
+```
+
+Our BioNTech SE model forcasting can be evaluated using several factors. For example, the widening confidence intervals with increasing forecast horizon suggest greater uncertainty further into the future. The plot suggests that future values are expected to continue at the current level with a slight drift, and the symmetrical confidence intervals imply an assumption of normally distributed forecast errors.
+
+:::
+
+# 14. Volatality Plot
+
+::: panel-tabset
+### Pfizer 
+
+```{r, message=FALSE, warning=FALSE}
+ht <- garch_pfe3@h.t 
+pfe=data.frame(pfe)
+pfe <- head(pfe, -1)
+pfe <- data.frame(pfe,rownames(pfe))
+colnames(pfe)[7] = "date"
+pfe$date<-as.Date(pfe$date,"%Y-%m-%d")
+data_spot = data.frame(ht,pfe$date)
+ggplot(data_spot, aes(y = ht, x = pfe.date)) + geom_line(col = "#5a3196") + ylab('Conditional Variance') + xlab('Date')+ggtitle("Volatality plot for Pfizer") + theme_bw()
+```
+
+In our Pfizer Volatility plot we see the conditional variance fluctuating over time, with several noticeable spikes indicating periods of high volatility like 2020, 2022. These spikes likely correspond to specific events or releases that caused increased trading activity or uncertainty in Pfizer’s stock price. The periods between the spikes, where the variance is lower, represent more stable times with less fluctuation in the stock price.
+
+### BioNTech SE 
+
+```{r, message=FALSE, warning=FALSE}
+ht <- garch_bntx3@h.t 
+bntx=data.frame(bntx)
+bntx <- head(bntx, -1)
+bntx <- data.frame(bntx,rownames(bntx))
+colnames(bntx)[7] = "date"
+bntx$date<-as.Date(bntx$date,"%Y-%m-%d")
+data_spot = data.frame(ht,bntx$date)
+ggplot(data_spot, aes(y = ht, x = bntx.date)) + geom_line(col = "#5a3196") + ylab('Conditional Variance') + xlab('Date')+ggtitle("Volatality plot for BioNTech SE") + theme_bw()
+```
+
+In our BioNTech SE Volatility plot we see the conditional variance fluctuating over time, with several noticeable spikes indicating periods of high volatility like 2020. These spikes likely correspond to specific events or releases that caused increased trading activity or uncertainty in BioNTech SE’s stock price. The periods between the spikes, where the variance is lower, represent more stable times with less fluctuation in the stock price.
+
+:::
+
+
+# 15. Model Equations
+
+::: panel-tabset
+### Pfizer 
+
+The best performing model was GARCH(1,1). The model equation is as follows:
+
+$\sigma_{t}^{2} = \alpha_{0} + \alpha_{1}\epsilon^{2}_{t-1}+\beta_{1}\sigma^{2}_{t-1}$
+
+
+### BioNTech SE 
+
+The best performing model was GARCH(1,1). The model equation is as follows:
+
+$\sigma_{t}^{2} = \alpha_{0} + \alpha_{1}\epsilon^{2}_{t-1}+\beta_{1}\sigma^{2}_{t-1}$
+
+:::
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

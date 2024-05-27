@@ -1,0 +1,1013 @@
+---
+title: "Deep Learning for Time Series"
+format:
+  html:
+    code-fold: true
+jupyter: python3
+engine: knitr
+---
+
+
+```{python, warning=FALSE, message=FALSE,echo=FALSE}
+import sys
+sys.setrecursionlimit(10000) 
+#!pip install scikit-learn
+#!pip install tensorflow==2.13.0
+#!pip install yfinance
+#!pip install plotly
+#!pip install statsmodels
+#!pip install IPython
+#!pip install matplotlib
+#!pip install seaborn
+#!pip install jupyter
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd 
+import yfinance as yf
+import plotly.express as px
+import statsmodels.api as sm 
+#from IPython.display import IFrame
+from sklearn.metrics import mean_squared_error, mean_absolute_error, mean_absolute_percentage_error
+
+from tensorflow import keras
+from tensorflow.keras import layers
+from tensorflow.keras import initializers
+from tensorflow.keras import regularizers
+from keras.layers import Dense, SimpleRNN, LSTM, GRU
+```
+
+# 1. Introduction
+Within this analysis, I will delve into forecasting time series data through the lens of deep learning. Specifically, I will explore and apply the nuances of Recurrent Neural Networks (RNNs), Gated Recurrent Units (GRUs), and Long Short-Term Memory networks (LSTMs). These advanced models will be meticulously evaluated against traditional approaches, namely ARMA, ARIMA, and SARIMA models, to discern their predictive prowess and applicability in time series analysis. This comparative study aims to illuminate the strengths and potential trade-offs between the deep learning methodologies and more conventional statistical models.
+
+# 2. Data Visualization
+
+```{python, warning=FALSE, message=FALSE,echo=FALSE}
+# Load the vaccination data
+vac_df = pd.read_csv("Datasets/us_state_vaccinations.csv")
+
+# Select relevant columns
+cols_show = ['date', 'location', 'daily_vaccinations_per_million', 'people_vaccinated_per_hundred', 'people_fully_vaccinated_per_hundred']
+vac_df = vac_df[cols_show]
+
+# Group by 'date' and summarize columns
+vac_df['date'] = pd.to_datetime(vac_df['date'])
+monthly_vac = vac_df.groupby(vac_df['date'].dt.to_period('M')).agg({
+    'daily_vaccinations_per_million': np.mean,
+    'people_vaccinated_per_hundred': np.mean,
+    'people_fully_vaccinated_per_hundred': np.mean
+}).reset_index()
+monthly_vac['date'] = monthly_vac['date'].dt.to_timestamp()
+
+# Load the confirmed cases data
+con_df = pd.read_csv("Datasets/covid_confirmed_usafacts.csv")
+
+# Pivot from wide to long format
+con_df_long = pd.melt(con_df, id_vars=['countyFIPS', 'County Name', 'State', 'StateFIPS'], 
+                      var_name='date', value_name='cases')
+con_df_long['date'] = pd.to_datetime(con_df_long['date'])
+
+# Group by 'date' and summarize
+monthly_cases = con_df_long.groupby(con_df_long['date'].dt.to_period('M')).agg({'cases': np.sum}).reset_index()
+monthly_cases['date'] = monthly_cases['date'].dt.to_timestamp()
+
+# Load the death cases data
+deaths_df = pd.read_csv("Datasets/covid_deaths_usafacts.csv")
+
+# Pivot from wide to long format
+deaths_df_long = pd.melt(deaths_df, id_vars=['countyFIPS', 'County Name', 'State', 'StateFIPS'], 
+                         var_name='date', value_name='deaths')
+deaths_df_long['date'] = pd.to_datetime(deaths_df_long['date'])
+
+# Group by 'date' and summarize
+monthly_deaths = deaths_df_long.groupby(deaths_df_long['date'].dt.to_period('M')).agg({'deaths': np.sum}).reset_index()
+monthly_deaths['date'] = monthly_deaths['date'].dt.to_timestamp()
+```
+
+In our session, we would not fit all the datasets since the complexity of the datasets, but we want to mainly focus on three datasets, one is the vaccination rate, and others are the confirmed case number and death case number to see the future trend of these three variables.
+
+::: panel-tabset
+### Vaccination Number
+
+```{python, warning=FALSE, message=FALSE}
+import plotly.express as px
+import nbformat
+
+fig = px.line(monthly_vac, x='date', y="daily_vaccinations_per_million")
+fig.update_layout(
+        xaxis_title='Time',
+        yaxis_title='Daily COVID-19 Vaccination Number',
+        title='Daily COVID-19 Vaccination Number in the US Over Time'
+    )
+#fig.show()
+```
+
+### Confirmed Case Number
+
+```{python, warning=FALSE, message=FALSE}
+fig = px.line(monthly_cases, x='date', y="cases")
+fig.update_layout(
+        xaxis_title='Time',
+        yaxis_title='Daily COVID-19 Confimed Number',
+        title='Daily COVID-19 Confimed Number in the US Over Time'
+    )
+#fig.show()
+```
+
+### Death Case Number
+
+```{python, warning=FALSE, message=FALSE}
+fig = px.line(monthly_deaths, x='date', y="deaths")
+fig.update_layout(
+        xaxis_title='Time',
+        yaxis_title='Daily COVID-19 Death Number',
+        title='Daily COVID-19 Death Number in the US Over Time'
+    )
+#fig.show()
+```
+
+:::
+
+# 3. Split Data & Normalize
+
+In the next phase of analysis, I will partition the datasets into training and testing subsets to facilitate model evaluation and validation. Given the wide range of variable scales present in the original data, I will implement **normalization** techniques on the regression values. This step is crucial for optimizing model performance by ensuring that the data conforms to a uniform scale, thereby enhancing the accuracy and effectiveness of the predictive models.
+
+::: panel-tabset
+### Vaccination Number
+
+```{python, warning=FALSE, message=FALSE}
+def get_train_test(data, split_percent = 0.8):
+    # Convert data to array
+    data = np.array(data)
+    
+    # Normalize data
+    data=(data-np.mean(data,axis=0))/np.std(data,axis=0)
+    
+    # define split point for splitting data into training and testing
+    n = len(data)
+    split = int(n*split_percent)
+    train_data = data[range(split)]
+    test_data = data[split:]
+    
+    # return the test splits
+    return train_data, test_data
+
+vac_train_data, vac_test_data = get_train_test(monthly_vac['daily_vaccinations_per_million'])
+
+print(f'Original shape: {len(monthly_vac["daily_vaccinations_per_million"])}')
+print(f'Train shape: {vac_train_data.shape}')
+print(f'Test shape: {vac_test_data.shape}')
+
+t1 = [*range(0, len(vac_train_data))]
+t2 = len(vac_train_data) + np.array([*range(0, len(vac_test_data))])
+
+def plotly_plot(t, y, title = "Plot", x_label = "Time (Month)", y_label = "Value"):
+
+    
+    fig = px.line(x = t[0], y = y[0], title = title, render_mode = 'SVG')  
+    
+    # Plot the scatter points
+    for i in range(1,len(y)):
+        fig.add_scatter(x = t[i], y = y[i], mode='lines')
+    
+    # update the layout with labels and customization
+    fig.update_layout(
+        xaxis_title = x_label,
+        yaxis_title = y_label,
+        showlegend = False
+    )
+    # show the figure
+    fig.show()
+
+plotly_plot([t1, t2], [vac_train_data, vac_test_data], title = "Vaccination Train & Test Data")
+```
+
+### Confirmed Case Number
+
+```{python, warning=FALSE, message=FALSE}
+case_train_data, case_test_data = get_train_test(monthly_cases['cases'])
+
+print(f'Original shape: {len(monthly_cases["cases"])}')
+print(f'Train shape: {case_train_data.shape}')
+print(f'Test shape: {case_test_data.shape}')
+
+t1 = [*range(0, len(case_train_data))]
+t2 = len(case_train_data) + np.array([*range(0, len(case_test_data))])
+
+plotly_plot([t1, t2], [case_train_data, case_test_data], title = "Confirmed Case Train & Test Data")
+```
+
+### Death Case Number
+
+```{python, warning=FALSE, message=FALSE}
+death_train_data, death_test_data = get_train_test(monthly_deaths['deaths'])
+
+print(f'Original shape: {len(monthly_deaths["deaths"])}')
+print(f'Train shape: {death_train_data.shape}')
+print(f'Test shape: {death_test_data.shape}')
+
+t1 = [*range(0, len(death_train_data))]
+t2 = len(death_train_data) + np.array([*range(0, len(death_test_data))])
+
+plotly_plot([t1, t2], [death_train_data, death_test_data], title = "Death Case Train & Test Data")
+```
+
+:::
+
+
+# 4. Mini-Batching
+
+To enhance the efficacy of the training process, I will incorporate the use of mini-batching. This approach involves updating the gradients more frequently within each epoch, which is expected to significantly improve the overall performance of the model. By doing so, the model can learn more effectively and adaptively from smaller subsets of data, leading to more accurate and robust predictions.
+
+::: panel-tabset
+### Vaccination Number
+
+```{python, warning=FALSE, message=FALSE}
+def form_arrays(x,lookback=3,delay=1,step=1,feature_columns=[0],target_columns=[0],unique=False,verbose=False):
+  # Initialize
+  i_start=0
+  count=0
+  x_out=[]
+  y_out=[]
+  # Sequentially build mini-batches
+  while i_start + lookback + delay < x.shape[0]:
+    i_stop = i_start + lookback
+    i_pred = i_stop + delay
+    # report if desired
+    if verbose and count < 2:
+      print("indice range:",i_start, i_stop, "-->",i_pre)
+    # define arrays
+    indices_to_keep = []
+    j = i_stop
+    while j >= i_start:
+      indices_to_keep.append(j)
+      j -= step
+    # create mini-batch sample
+    xtmp = x[indices_to_keep,:]
+    xtmp = xtmp[:,feature_columns]
+    ytmp=x[i_pred,target_columns]
+    x_out.append(xtmp)
+    y_out.append(ytmp)
+    # report if desired
+    if verbose and count <2:
+      print(xtmp, "-->", ytmp)
+      print("shape:", xtmp.shape, "-->",ytmp.shape)
+    # plot
+    if verbose and count <2:
+      fig, ax = plt.subplots()
+      ax.plot(x, 'b-')
+      ax.plot(x,'bx')
+      ax.plot(indices_to_keep, xtmp, 'go')
+      ax.plot(i_pred*np.ones(len(target_columns)),ytmp, 'ro')
+      plt.show()
+    # update start point
+    if unique:
+      i_start += lookback
+    else:
+      i_start += 1
+    count += 1
+  return np.array(x_out), np.array(y_out)
+
+train = vac_train_data.reshape(vac_train_data.shape[0],1)
+test = vac_test_data.reshape(vac_test_data.shape[0],1)
+
+vac_trainX, vac_trainY = form_arrays(train,lookback=2, delay=1, step=1, feature_columns=[0], target_columns=[0], unique=False,verbose=False)
+vac_testX, vac_testY = form_arrays(test,lookback=2, delay=1, step=1, feature_columns=[0], target_columns=[0], unique=False,verbose=False)
+
+print(f'Train shape: {vac_trainX.shape} , {vac_trainY.shape}')
+print(f'Test shape: {vac_testX.shape} , {vac_testY.shape}')
+```
+
+### Confirmed Case Number
+
+```{python, warning=FALSE, message=FALSE}
+train = case_train_data.reshape(case_train_data.shape[0],1)
+test = case_test_data.reshape(case_test_data.shape[0],1)
+
+case_trainX, case_trainY = form_arrays(train,lookback=2, delay=1, step=1, feature_columns=[0], target_columns=[0], unique=False,verbose=False)
+case_testX, case_testY = form_arrays(test,lookback=2, delay=1, step=1, feature_columns=[0], target_columns=[0], unique=False,verbose=False)
+
+print(f'Train shape: {case_trainX.shape} , {case_trainY.shape}')
+print(f'Test shape: {case_testX.shape} , {case_testY.shape}')
+```
+
+### Death Case Number
+
+```{python, warning=FALSE, message=FALSE}
+train = death_train_data.reshape(death_train_data.shape[0],1)
+test = death_test_data.reshape(death_test_data.shape[0],1)
+
+death_trainX, death_trainY = form_arrays(train,lookback=2, delay=1, step=1, feature_columns=[0], target_columns=[0], unique=False,verbose=False)
+death_testX, death_testY = form_arrays(test,lookback=2, delay=1, step=1, feature_columns=[0], target_columns=[0], unique=False,verbose=False)
+
+print(f'Train shape: {death_trainX.shape} , {death_trainY.shape}')
+print(f'Test shape: {death_testX.shape} , {death_testY.shape}')
+```
+
+:::
+
+
+# 5. RNN
+
+In this section, I will focus on training a Recurrent Neural Network (RNN), which is specifically engineered for handling sequential data by utilizing cyclic connections that retain memory of prior inputs. To enhance the robustness and generalizability of the RNN, I plan to train it both with and without regularization techniques. To streamline this process, I will encapsulate the modeling code within a single function that accepts parameters for data, model type, and a boolean indicating whether regularization should be applied. This modular approach will facilitate easy adjustments and retesting under various configurations, improving efficiency and experimental flexibility.
+
+Here is how we define each function to generate the model:
+```{python, warning=FALSE, message=FALSE}
+import tensorflow as tf
+# Utility functions 
+def regression_report(yt,ytp,yv,yvp):
+  print("--------- Regression Report ---------")
+  print("TRAINING:")
+  train_mse = np.mean((yt - ytp) ** 2)
+  train_mae = np.mean(np.abs(yt - ytp))
+  print("MSE", train_mse)
+  print("MAE", train_mae)
+  
+  # PARITY PLOT
+  fig, ax = plt.subplots()
+  ax.plot(yt, ytp, 'ro')
+  ax.plot(yt, yt, 'b-')
+  ax.set(xlabel='y_data', ylabel='y_predicted',
+        title = 'Training data parity plot (line y=x represents a perfect fit)')
+  plt.show()
+  
+  # PLOT PART OF THE PREDICTED TIME-SERIES
+  frac_plot=1.0
+  upper=int(frac_plot*yt.shape[0]);
+  fig, ax = plt.subplots()
+  ax.plot(yt[0:upper], 'b-')
+  ax.plot(ytp[0:upper], 'r-', alpha=0.5)
+  ax.plot(ytp[0:upper], 'ro', alpha=0.25)
+  ax.set(xlabel='index', ylabel='y(t) (blue=actual & red=prediction)',title='Training: Time-series prediction')
+  plt.show()
+  
+  print("VALIDATION:")
+  val_mse = np.mean((yv - yvp) ** 2)
+  val_mae = np.mean(np.abs(yv - yvp))
+  print("MSE", val_mse)
+  print("MAE", val_mae)
+  
+  # PARITY PLOT
+  fig,ax = plt.subplots()
+  ax.plot(yv,yvp, 'ro')
+  ax.plot(yv, yv,'b-')
+  ax.set(xlabel='y_data', ylabel='y_predicted',title='Validation data parity plot (line y=x represents a perfect fit)')
+  
+  # PLOT PART OF THE PREDICTED TIME-SERIES
+  upper=int(frac_plot*yv.shape[0])
+  fig,ax = plt.subplots()
+  ax.plot(yv[0:upper], 'b-')
+  ax.plot(yvp[0:upper], 'r-', alpha=0.5)
+  ax.plot(yvp[0:upper], 'ro', alpha=0.25)
+  ax.set(xlabel='index', ylabel='y(t) (blue=actual & red=prediction)',title='Validation: Time-series prediction')
+  plt.show()
+  return train_mse, train_mae, val_mse, val_mae
+
+def history_plot(history):
+  FS=18 #fontsize
+  history_dict = history.history
+  loss_values = history_dict['loss']
+  val_loss_values = history_dict['val_loss']
+  epochs = range(1, len(loss_values) + 1)
+  plt.plot(epochs, loss_values, 'bo', label='Training Loss')
+  plt.plot(epochs, val_loss_values, 'b', label='Validation Loss')
+  plt.title('Training and Validation Loss')
+  plt.xlabel('Epochs')
+  plt.ylabel('Loss')
+  plt.ylim(bottom=0) 
+  plt.legend()
+  plt.show()
+
+# Define model function
+def train_model(model_type, train_x, train_y, val_x, val_y, regularization = True, L2=1e-4):
+  if regularization:
+    reg = regularizers.L2(L2)
+  else:
+    reg = None
+  
+  # Define parameters
+  optimizer="rmsprop"
+  loss_function = 'mean_squared_error'
+  learning_rate=0.01
+  numbers_epochs=200
+  input_shape=(train_x.shape[1],train_x.shape[2])
+  train_x1 = train_x.reshape(train_x.shape[0],train_x.shape[1]*train_x.shape[2])
+  batch_size=len(train_x1)              # batch training
+  
+  # BUILD MODEL
+  recurrent_hidden_units=32
+  
+  # CREATE MODEL
+  model = keras.Sequential()
+  
+  # ADD RECURRENT LAYER
+  if model_type == 'RNN':
+    model.add(SimpleRNN(
+    units=recurrent_hidden_units,
+    return_sequences=False,
+    input_shape=input_shape, 
+    # recurrent_dropout=0.8,
+    recurrent_regularizer=reg,
+    activation='relu')
+              )
+  elif model_type == 'GRU':
+    model.add(GRU(
+    units=recurrent_hidden_units,
+    return_sequences=False,
+    input_shape=input_shape, 
+    # recurrent_dropout=0.8,
+    recurrent_regularizer=reg,
+    activation='relu')
+              ) 
+  elif model_type == 'LSTM':
+    model.add(LSTM(
+    units=recurrent_hidden_units,
+    return_sequences=False,
+    input_shape=input_shape, 
+    # recurrent_dropout=0.8,
+    recurrent_regularizer=reg,
+    activation='relu')
+              )
+  else:
+    print('Wrong model type')
+  
+  # NEED TO TAKE THE OUTPUT RNN AND CONVERT TO SCALAR 
+  model.add(Dense(units=1, activation='linear'))
+  
+  # MODEL SUMMARY
+  print(model.summary()); #print(x_train.shape,y_train.shape)  
+  
+  # COMPILING THE MODEL 
+  opt = keras.optimizers.RMSprop(learning_rate=learning_rate)
+  model.compile(optimizer=opt, loss=loss_function)
+  
+  # TRAINING YOUR MODEL
+  history_techmu = model.fit(train_x,
+                      train_y,
+                      epochs=numbers_epochs,
+                      batch_size=batch_size, verbose=False,
+                      validation_data=(val_x, val_y))
+  # History plot
+  history_plot(history_techmu)
+  
+  # Predictions 
+  train_pred=model.predict(train_x)
+  val_pred=model.predict(val_x) 
+  train_mse, train_mae, val_mse, val_mae = regression_report(train_y,train_pred,val_y,val_pred)
+  return train_mse, train_mae, val_mse, val_mae
+```
+
+
+::: panel-tabset
+### Vaccination Number
+
+I will be training the model in two distinct scenarios: with regularization and without. This dual approach will allow us to evaluate the impact of regularization techniques on model performance, particularly in terms of preventing overfitting and enhancing generalization to new data. This comparative strategy is designed to optimize and fine-tune our model's parameters for more robust predictions.
+
+#### With Regularization
+
+```{python, warning=FALSE, message=FALSE}
+model_type = 'RNN'
+reg = True
+train_mse, train_mae, val_mse, val_mae = train_model(model_type, vac_trainX, vac_trainY, vac_testX, vac_testY, regularization = reg)
+result_dict = {
+  'data_type':'Vaccination',
+  'model_type':model_type,
+  'reg':reg,
+  'train_mse':train_mse,
+  'train_mae':train_mae,
+  'val_mse':val_mse,
+  'val_mae':val_mae
+  
+}
+results = []
+results.append(result_dict)
+print(f'Model results: {result_dict}')
+```
+
+
+#### Without Regularization
+
+```{python, warning=FALSE, message=FALSE}
+model_type = 'RNN'
+reg = False
+train_mse, train_mae, val_mse, val_mae = train_model(model_type, vac_trainX, vac_trainY, vac_testX, vac_testY, regularization = reg)
+result_dict = {
+  'data_type':'Vaccination',
+  'model_type':model_type,
+  'reg':reg,
+  'train_mse':train_mse,
+  'train_mae':train_mae,
+  'val_mse':val_mse,
+  'val_mae':val_mae
+  
+}
+results.append(result_dict)
+print(f'Model results: {result_dict}')
+```
+
+### Confirmed Case Number
+
+I will be training the model in two distinct scenarios: with regularization and without. This dual approach will allow us to evaluate the impact of regularization techniques on model performance, particularly in terms of preventing overfitting and enhancing generalization to new data. This comparative strategy is designed to optimize and fine-tune our model's parameters for more robust predictions.
+
+#### With Regularization
+
+```{python, warning=FALSE, message=FALSE}
+model_type = 'RNN'
+reg = True
+train_mse, train_mae, val_mse, val_mae = train_model(model_type, case_trainX, case_trainY, case_testX, case_testY, regularization = reg)
+result_dict = {
+  'data_type':'Confirmed Case',
+  'model_type':model_type,
+  'reg':reg,
+  'train_mse':train_mse,
+  'train_mae':train_mae,
+  'val_mse':val_mse,
+  'val_mae':val_mae
+  
+}
+results.append(result_dict)
+print(f'Model results: {result_dict}')
+```
+
+
+#### Without Regularization
+
+```{python, warning=FALSE, message=FALSE}
+model_type = 'RNN'
+reg = False
+train_mse, train_mae, val_mse, val_mae = train_model(model_type, case_trainX, case_trainY, case_testX, case_testY, regularization = reg)
+result_dict = {
+  'data_type':'Confirmed Case',
+  'model_type':model_type,
+  'reg':reg,
+  'train_mse':train_mse,
+  'train_mae':train_mae,
+  'val_mse':val_mse,
+  'val_mae':val_mae
+  
+}
+results.append(result_dict)
+print(f'Model results: {result_dict}')
+```
+
+### Death Case Number
+
+I will be training the model in two distinct scenarios: with regularization and without. This dual approach will allow us to evaluate the impact of regularization techniques on model performance, particularly in terms of preventing overfitting and enhancing generalization to new data. This comparative strategy is designed to optimize and fine-tune our model's parameters for more robust predictions.
+
+#### With Regularization
+
+```{python, warning=FALSE, message=FALSE}
+model_type = 'RNN'
+reg = True
+train_mse, train_mae, val_mse, val_mae = train_model(model_type, death_trainX, death_trainY, death_testX, death_testY, regularization = reg)
+result_dict = {
+  'data_type':'Death Case',
+  'model_type':model_type,
+  'reg':reg,
+  'train_mse':train_mse,
+  'train_mae':train_mae,
+  'val_mse':val_mse,
+  'val_mae':val_mae
+  
+}
+results.append(result_dict)
+print(f'Model results: {result_dict}')
+```
+
+
+#### Without Regularization
+
+```{python, warning=FALSE, message=FALSE}
+model_type = 'RNN'
+reg = False
+train_mse, train_mae, val_mse, val_mae = train_model(model_type, death_trainX, death_trainY, death_testX, death_testY, regularization = reg)
+result_dict = {
+  'data_type':'Death Case',
+  'model_type':model_type,
+  'reg':reg,
+  'train_mse':train_mse,
+  'train_mae':train_mae,
+  'val_mse':val_mse,
+  'val_mae':val_mae
+  
+}
+results.append(result_dict)
+print(f'Model results: {result_dict}')
+```
+
+:::
+
+
+# 6. LSTM
+
+In this section, I will be training a Long Short-Term Memory (LSTM) network, a specialized form of Recurrent Neural Network (RNN). LSTMs are designed to overcome the vanishing gradient problem inherent in traditional RNNs through a sophisticated gating mechanism. This mechanism effectively regulates the information flow into and out of the network's memory cells, facilitating the learning of long-term dependencies. I plan to evaluate the LSTM's performance both with and without the application of regularization techniques, to ascertain their impact on the model's ability to generalize.
+
+::: panel-tabset
+### Vaccination Number
+
+I will be training the model in two distinct scenarios: with regularization and without. This dual approach will allow us to evaluate the impact of regularization techniques on model performance, particularly in terms of preventing overfitting and enhancing generalization to new data. This comparative strategy is designed to optimize and fine-tune our model's parameters for more robust predictions.
+
+#### With Regularization
+
+```{python, warning=FALSE, message=FALSE}
+model_type = 'LSTM'
+reg = True
+train_mse, train_mae, val_mse, val_mae = train_model(model_type, vac_trainX, vac_trainY, vac_testX, vac_testY, regularization = reg)
+result_dict = {
+  'data_type':'Vaccination',
+  'model_type':model_type,
+  'reg':reg,
+  'train_mse':train_mse,
+  'train_mae':train_mae,
+  'val_mse':val_mse,
+  'val_mae':val_mae
+  
+}
+results.append(result_dict)
+print(f'Model results: {result_dict}')
+```
+
+
+#### Without Regularization
+
+```{python, warning=FALSE, message=FALSE}
+model_type = 'LSTM'
+reg = False
+train_mse, train_mae, val_mse, val_mae = train_model(model_type, vac_trainX, vac_trainY, vac_testX, vac_testY, regularization = reg)
+result_dict = {
+  'data_type':'Vaccination',
+  'model_type':model_type,
+  'reg':reg,
+  'train_mse':train_mse,
+  'train_mae':train_mae,
+  'val_mse':val_mse,
+  'val_mae':val_mae
+  
+}
+results.append(result_dict)
+print(f'Model results: {result_dict}')
+```
+
+### Confirmed Case Number
+
+I will be training the model in two distinct scenarios: with regularization and without. This dual approach will allow us to evaluate the impact of regularization techniques on model performance, particularly in terms of preventing overfitting and enhancing generalization to new data. This comparative strategy is designed to optimize and fine-tune our model's parameters for more robust predictions.
+
+#### With Regularization
+
+```{python, warning=FALSE, message=FALSE}
+model_type = 'LSTM'
+reg = True
+train_mse, train_mae, val_mse, val_mae = train_model(model_type, case_trainX, case_trainY, case_testX, case_testY, regularization = reg)
+result_dict = {
+  'data_type':'Confirmed Case',
+  'model_type':model_type,
+  'reg':reg,
+  'train_mse':train_mse,
+  'train_mae':train_mae,
+  'val_mse':val_mse,
+  'val_mae':val_mae
+  
+}
+results.append(result_dict)
+print(f'Model results: {result_dict}')
+```
+
+
+#### Without Regularization
+
+```{python, warning=FALSE, message=FALSE}
+model_type = 'LSTM'
+reg = False
+train_mse, train_mae, val_mse, val_mae = train_model(model_type, case_trainX, case_trainY, case_testX, case_testY, regularization = reg)
+result_dict = {
+  'data_type':'Confirmed Case',
+  'model_type':model_type,
+  'reg':reg,
+  'train_mse':train_mse,
+  'train_mae':train_mae,
+  'val_mse':val_mse,
+  'val_mae':val_mae
+  
+}
+results.append(result_dict)
+print(f'Model results: {result_dict}')
+```
+
+### Death Case Number
+
+I will be training the model in two distinct scenarios: with regularization and without. This dual approach will allow us to evaluate the impact of regularization techniques on model performance, particularly in terms of preventing overfitting and enhancing generalization to new data. This comparative strategy is designed to optimize and fine-tune our model's parameters for more robust predictions.
+
+#### With Regularization
+
+```{python, warning=FALSE, message=FALSE}
+model_type = 'LSTM'
+reg = True
+train_mse, train_mae, val_mse, val_mae = train_model(model_type, death_trainX, death_trainY, death_testX, death_testY, regularization = reg)
+result_dict = {
+  'data_type':'Death Case',
+  'model_type':model_type,
+  'reg':reg,
+  'train_mse':train_mse,
+  'train_mae':train_mae,
+  'val_mse':val_mse,
+  'val_mae':val_mae
+  
+}
+results.append(result_dict)
+print(f'Model results: {result_dict}')
+```
+
+
+#### Without Regularization
+
+```{python, warning=FALSE, message=FALSE}
+model_type = 'LSTM'
+reg = False
+train_mse, train_mae, val_mse, val_mae = train_model(model_type, death_trainX, death_trainY, death_testX, death_testY, regularization = reg)
+result_dict = {
+  'data_type':'Death Case',
+  'model_type':model_type,
+  'reg':reg,
+  'train_mse':train_mse,
+  'train_mae':train_mae,
+  'val_mse':val_mse,
+  'val_mae':val_mae
+  
+}
+results.append(result_dict)
+print(f'Model results: {result_dict}')
+```
+
+:::
+
+
+# 7. GRU
+
+::: panel-tabset
+### Vaccination Number
+
+I will be training the model in two distinct scenarios: with regularization and without. This dual approach will allow us to evaluate the impact of regularization techniques on model performance, particularly in terms of preventing overfitting and enhancing generalization to new data. This comparative strategy is designed to optimize and fine-tune our model's parameters for more robust predictions.
+
+#### With Regularization
+
+```{python, warning=FALSE, message=FALSE}
+model_type = 'GRU'
+reg = True
+train_mse, train_mae, val_mse, val_mae = train_model(model_type, vac_trainX, vac_trainY, vac_testX, vac_testY, regularization = reg)
+result_dict = {
+  'data_type':'Vaccination',
+  'model_type':model_type,
+  'reg':reg,
+  'train_mse':train_mse,
+  'train_mae':train_mae,
+  'val_mse':val_mse,
+  'val_mae':val_mae
+  
+}
+results.append(result_dict)
+print(f'Model results: {result_dict}')
+```
+
+
+#### Without Regularization
+
+```{python, warning=FALSE, message=FALSE}
+model_type = 'GRU'
+reg = False
+train_mse, train_mae, val_mse, val_mae = train_model(model_type, vac_trainX, vac_trainY, vac_testX, vac_testY, regularization = reg)
+result_dict = {
+  'data_type':'Vaccination',
+  'model_type':model_type,
+  'reg':reg,
+  'train_mse':train_mse,
+  'train_mae':train_mae,
+  'val_mse':val_mse,
+  'val_mae':val_mae
+  
+}
+results.append(result_dict)
+print(f'Model results: {result_dict}')
+```
+
+### Confirmed Case Number
+
+I will be training the model in two distinct scenarios: with regularization and without. This dual approach will allow us to evaluate the impact of regularization techniques on model performance, particularly in terms of preventing overfitting and enhancing generalization to new data. This comparative strategy is designed to optimize and fine-tune our model's parameters for more robust predictions.
+
+#### With Regularization
+
+```{python, warning=FALSE, message=FALSE}
+model_type = 'GRU'
+reg = True
+train_mse, train_mae, val_mse, val_mae = train_model(model_type, case_trainX, case_trainY, case_testX, case_testY, regularization = reg)
+result_dict = {
+  'data_type':'Confirmed Case',
+  'model_type':model_type,
+  'reg':reg,
+  'train_mse':train_mse,
+  'train_mae':train_mae,
+  'val_mse':val_mse,
+  'val_mae':val_mae
+  
+}
+results.append(result_dict)
+print(f'Model results: {result_dict}')
+```
+
+
+#### Without Regularization
+
+```{python, warning=FALSE, message=FALSE}
+model_type = 'GRU'
+reg = False
+train_mse, train_mae, val_mse, val_mae = train_model(model_type, case_trainX, case_trainY, case_testX, case_testY, regularization = reg)
+result_dict = {
+  'data_type':'Confirmed Case',
+  'model_type':model_type,
+  'reg':reg,
+  'train_mse':train_mse,
+  'train_mae':train_mae,
+  'val_mse':val_mse,
+  'val_mae':val_mae
+  
+}
+results.append(result_dict)
+print(f'Model results: {result_dict}')
+```
+
+### Death Case Number
+
+I will be training the model in two distinct scenarios: with regularization and without. This dual approach will allow us to evaluate the impact of regularization techniques on model performance, particularly in terms of preventing overfitting and enhancing generalization to new data. This comparative strategy is designed to optimize and fine-tune our model's parameters for more robust predictions.
+
+#### With Regularization
+
+```{python, warning=FALSE, message=FALSE}
+model_type = 'GRU'
+reg = True
+train_mse, train_mae, val_mse, val_mae = train_model(model_type, death_trainX, death_trainY, death_testX, death_testY, regularization = reg)
+result_dict = {
+  'data_type':'Death Case',
+  'model_type':model_type,
+  'reg':reg,
+  'train_mse':train_mse,
+  'train_mae':train_mae,
+  'val_mse':val_mse,
+  'val_mae':val_mae
+  
+}
+results.append(result_dict)
+print(f'Model results: {result_dict}')
+```
+
+
+#### Without Regularization
+
+```{python, warning=FALSE, message=FALSE}
+model_type = 'GRU'
+reg = False
+train_mse, train_mae, val_mse, val_mae = train_model(model_type, death_trainX, death_trainY, death_testX, death_testY, regularization = reg)
+result_dict = {
+  'data_type':'Death Case',
+  'model_type':model_type,
+  'reg':reg,
+  'train_mse':train_mse,
+  'train_mae':train_mae,
+  'val_mse':val_mse,
+  'val_mae':val_mae
+  
+}
+results.append(result_dict)
+print(f'Model results: {result_dict}')
+```
+
+:::
+
+# 8. Discussion
+
+
+In constructing our models, we design a framework tailored for RNN, LSTM, and GRU networks to tackle specific tasks. Each model begins with defining regularization practices to ensure generalization, using L2 regularization as needed. We configure the model using the RMSprop optimizer, a mean squared error loss function, and set a learning rate. Depending on the model type—RNN, GRU, or LSTM—we adjust the architecture by setting the number of recurrent hidden units and whether the model returns sequences. After assembling the model, we compile it, train it on our dataset over numerous epochs, and validate it using a separate dataset. This systematic approach allows us to fine-tune and compare the performance of each neural network architecture effectively.
+
+
+### 8.1 How do the results from the 3 different ANN models compare with each other in terms of accuracy and predictive power?
+```{python, warning=FALSE, message=FALSE}
+# Combine results into table
+result_df = pd.DataFrame(results)
+result_df['train_rmse'] = result_df['train_mse'].apply(lambda x: x ** .5)
+result_df['val_rmse'] = result_df['val_mse'].apply(lambda x: x ** .5)
+result_df[['data_type','model_type', 'reg','train_rmse','val_rmse']].sort_values(by=['data_type', 'val_rmse'], ascending=True)
+```
+**Best Vaccination Number DL Model:**
+
+```{python, warning=FALSE, message=FALSE}
+result_df[result_df.data_type=='Vaccination'][['data_type','model_type', 'reg','train_rmse','val_rmse']].sort_values(by=['data_type', 'val_rmse'], ascending=True).head(1)
+```
+
+We can see the best DL model for vaccination number is RNN model without regulation since it has the lowest validation RMSE value.
+
+**Best Confirmed Case DL Model:**
+
+```{python, warning=FALSE, message=FALSE}
+result_df[result_df.data_type=='Confirmed Case'][['data_type','model_type', 'reg','train_rmse','val_rmse']].sort_values(by=['data_type', 'val_rmse'], ascending=True).head(1)
+```
+
+We can see the best DL model for confirmed case is RNN model without regulation since it has the lowest validation RMSE value.
+
+**Best Death Case DL Model:**
+
+```{python, warning=FALSE, message=FALSE}
+result_df[result_df.data_type=='Death Case'][['data_type','model_type', 'reg','train_rmse','val_rmse']].sort_values(by=['data_type', 'val_rmse'], ascending=True).head(1)
+```
+
+We can see the best DL model for death case is LSTM model with regulation since it has the lowest validation RMSE value.
+
+In our evaluation, the RNN and LSTM models demonstrated superior performance, excelling in their predictive capabilities. Conversely, the GRU model showed relatively lower effectiveness. This divergence in performance highlights the distinct advantages and challenges associated with each type of neural network architecture, emphasizing the importance of choosing the right model based on the specific requirements and nuances of the dataset at hand.
+
+### 8.2 What effect does including regularization have on your results?
+
+Regularization is crucial in machine learning, adding a penalty to the loss function to reduce the complexity of the model, thus minimizing overfitting to the training data. This technique varies in effectiveness across different datasets. For example, an un-regularized LSTM model achieved the lowest RMSE for emissions data, while a regularized GRU model was most effective for the temperature dataset. Across various datasets, a consistent observation was a higher RMSE in the validation set compared to the training set, indicating persistent overfitting despite the regularization's attempt to bridge the gap between training and validation performance.
+
+### 8.3 How far into the future can the deep learning model accurately predict the future?
+
+Deep learning models' ability to predict future events hinges on the data they have encountered during training. These models, fundamentally supervised, learn and generate predictions based on the sequences they've been exposed to. Thus, their predictive power extends only as far as recognizing patterns similar to those within their training datasets. The farther into the future a prediction extends, the more reliant it becomes on the quality and representativeness of historical data, limiting accuracy when facing novel scenarios or trends not previously seen during training.
+
+
+### 8.4. How does your deep learning modeling compare to the traditional single-variable time-series ARMA/ARIMA models from HW-3?
+
+::: panel-tabset
+#### Vaccination Number
+
+From Arima model, below are the computed metrics:
+
+| Metric       | Value               |
+|--------------|---------------------|
+| ME           | -1.260901e+04       |
+| RMSE         | 4.404350e+04        |
+| MAE          | 2.961164e+04        |
+| MPE          | -1.819884e+00       |
+| MAPE         | 2.997255e+01        |
+| MASE         | 5.644007e-01        |
+| ACF1         | -1.726600e-01       |
+
+From Deep Learning model, below are the computed metrics:
+
+```{python, warning=FALSE, message=FALSE}
+result_df[result_df.data_type=='Vaccination'][['data_type','model_type', 'reg','train_rmse','val_rmse']].sort_values(by=['data_type', 'val_rmse'], ascending=True)
+```
+
+#### Confirmed Case Number
+
+From Arima model, below are the computed metrics:
+
+| Metric       | Value               |
+|--------------|---------------------|
+| ME           | 5.887429e+04       |
+| RMSE         | 2.036015e+06        |
+| MAE          | 1.092948e+06        |
+| MPE          | 1.626543e+04       |
+| MAPE         | 1.876329e+04        |
+| MASE         | 2.083170e+01        |
+| ACF1         | 1.041066e-01       |
+
+From Deep Learning model, below are the computed metrics:
+
+```{python, warning=FALSE, message=FALSE}
+result_df[result_df.data_type=='Confirmed Case'][['data_type','model_type', 'reg','train_rmse','val_rmse']].sort_values(by=['data_type', 'val_rmse'], ascending=True)
+```
+
+#### Death Case Number
+
+From Arima model, below are the computed metrics:
+
+| Metric       | Value               |
+|--------------|---------------------|
+| ME           | 1373.71612640       |
+| RMSE         | 8276.58694400        |
+| MAE          | 6716.48728344        |
+| MPE          | 64.68052062       |
+| MAPE         | 74.15331696         |
+| MASE         | 0.12801688        |
+| ACF1         | -0.09912142        |
+
+From Deep Learning model, below are the computed metrics:
+
+```{python, warning=FALSE, message=FALSE}
+result_df[result_df.data_type=='Death Case'][['data_type','model_type', 'reg','train_rmse','val_rmse']].sort_values(by=['data_type', 'val_rmse'], ascending=True)
+```
+
+:::
+
+
+The performance analysis shows that DL models often outperform traditional models, notably in terms of RMSE, showcasing their robustness in handling diverse datasets. However, the efficacy of these models is somewhat constrained by the size of the available data. Small datasets tend to skew performance, highlighting a potential limitation in scenarios where expansive data is not available.
+
+For ARIMA models, their predictive capability is generally limited when dealing with noisy, fluctuating data, often producing overly simplistic forecasts. In contrast, ARIMAX and VAR models manage to capture underlying trends more effectively, albeit with some inconsistency in the presence of volatility. Deep Learning models, on the other hand, excel with larger datasets, achieving near-perfect predictions. The performance disparity underscores the importance of dataset size in leveraging the full potential of advanced DL models.
+
+
+
+# 9. Write a discussion paragraph Comparing your models (use RMSE) and forecasts from these sections with your Deep Learning Models.
+
+This analysis has demonstrated the potent capabilities of deep learning in forecasting time series data. The efficacy of deep learning models relative to traditional approaches is challenging to evaluate directly due to discrepancies in the training and validation datasets. However, the Root Mean Square Error (RMSE) metric reveals considerably higher values for traditional time series models, implying that these models may be less adept at capturing the variability within the dataset. Conversely, deep learning models have consistently produced RMSE values under 1, suggesting superior performance in tracking the actual data trends.
+
+A closer inspection of the training and validation performance of deep learning models against the actual forecasts from traditional models, like ARIMA, underscores this contrast. The ARIMA models, despite their sophistication, often faltered in accounting for the dataset's inherent variance. In contrast, deep learning models demonstrated an ability to assimilate and reflect this variance in their predictions. Notably, the hierarchy of deep learning model performance typically favored the GRU, followed by the LSTM, and then the RNN, aligning with the evolutionary complexity of these architectures.
+
+Traditional time series models necessitate transforming data into a stationary form, with consistent mean and variance, to make accurate extrapolations. This often involves processes such as differencing, which may not always be sufficient for effective forecasting. On the other hand, deep learning models function as universal approximators, capable of modeling any form of data variance. This attribute renders them particularly suitable for complex time series datasets characterized by pronounced fluctuations and seasonal variations, enabling them to deliver more accurate and robust forecasts.
+
+

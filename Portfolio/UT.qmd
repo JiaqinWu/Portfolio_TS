@@ -1,0 +1,3326 @@
+---
+title: "Univariate TS Models"
+format:  
+  html:
+   embed-resources: true
+   code-fold: true
+---
+
+```{r, echo=FALSE,message=FALSE,warning=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(readxl)
+library(forecast)
+library(astsa) 
+library(xts)
+library(tseries)
+library(fpp2)
+library(fma)
+library(lubridate)
+library(tidyverse)
+library(TSstudio)
+library(quantmod)
+library(tidyquant)
+library(plotly)
+library(data.table)
+library(kableExtra)
+library(zoo)
+library(gridExtra)
+```
+
+```{r, echo=FALSE,message=FALSE,warning=FALSE}
+# Read the dataset
+vac_df <- read_csv("Datasets/us_state_vaccinations.csv")
+
+# Select relevant columns
+cols_show <- c('date', 'location', 'daily_vaccinations_per_million', 'people_vaccinated_per_hundred', 'people_fully_vaccinated_per_hundred')
+t <- vac_df[, cols_show]
+
+# Group by 'date' and summarize columns, ignoring NA values
+t1 <- t %>%
+  group_by(date) %>%
+  summarize(
+    daily_vaccinations_per_million = sum(daily_vaccinations_per_million, na.rm = TRUE),
+    people_vaccinated_per_hundred = mean(people_vaccinated_per_hundred, na.rm = TRUE),
+    people_fully_vaccinated_per_hundred = mean(people_fully_vaccinated_per_hundred, na.rm = TRUE)
+  )
+
+# Convert date column to Date format
+t1$date <- as.Date(t1$date)
+
+# Aggregate data to monthly level using mean for each column
+t1 <- t1 %>%
+  group_by(date = format(date, "%Y-%m")) %>%
+  summarize(daily_vaccinations_per_million = mean(daily_vaccinations_per_million, na.rm = TRUE),
+            people_vaccinated_per_hundred = mean(people_vaccinated_per_hundred, na.rm = TRUE),
+            people_fully_vaccinated_per_hundred = mean(people_fully_vaccinated_per_hundred, na.rm = TRUE))
+
+# Transform the date column type with specified format
+t1$date <- as.Date(paste0(t1$date, "-01-01"))
+
+# Create time-series
+d_vacc_ts <- ts(t1$daily_vaccinations_per_million, start = c(year(min(t1$date)), month(min(t1$date))), end = c(year(max(t1$date)), month(max(t1$date))), frequency = 12)
+
+p_vacc_ts <- ts(t1$people_vaccinated_per_hundred, start = c(year(min(t1$date)), month(min(t1$date))), end = c(year(max(t1$date)), month(max(t1$date))), frequency = 12)
+
+pf_vacc_ts <- ts(t1$people_fully_vaccinated_per_hundred, start = c(year(min(t1$date)), month(min(t1$date))), end = c(year(max(t1$date)), month(max(t1$date))), frequency = 12)
+
+# Newly confirmed cases
+wide_data <- read_csv("Datasets/covid_confirmed_usafacts.csv")
+
+# Define the key and value columns for pivoting
+key_cols <- c("countyFIPS", "County Name", "State", "StateFIPS")
+value_cols <- setdiff(names(wide_data), key_cols)
+
+# Pivot the data from wide to long
+long_data <- pivot_longer(
+  wide_data,
+  cols = value_cols,
+  names_to = "date",
+  values_to = "value"
+)
+
+# Group by 'State' and 'date', and calculate the sum of Confirmed Cases
+con_case_df <- long_data %>%
+  group_by(date) %>%
+  summarize(value_sum = sum(value, na.rm = TRUE))
+
+# Convert date column to Date format
+con_case_df$date <- as.Date(con_case_df$date)
+
+# Aggregate data to monthly level using mean for each column
+con_case_df <- con_case_df %>%
+  group_by(date = format(date, "%Y-%m")) %>%
+  summarize(value_sum = mean(value_sum, na.rm = TRUE))
+
+# Transform the date column type with specified format
+con_case_df$date <- as.Date(paste0(con_case_df$date, "-01-01"))
+
+# Create time-series
+case_ts <- ts(con_case_df$value_sum, start = c(year(min(con_case_df$date)), month(min(con_case_df$date))), end = c(year(max(con_case_df$date)), month(max(con_case_df$date))), frequency = 12)
+
+
+# Death cases
+wide_data <- read_csv("Datasets/covid_deaths_usafacts.csv")
+
+# Define the key and value columns for pivoting
+key_cols <- c("countyFIPS", "County Name", "State", "StateFIPS")
+value_cols <- setdiff(names(wide_data), key_cols)
+
+# Pivot the data from wide to long
+long_data <- pivot_longer(
+  wide_data,
+  cols = value_cols,
+  names_to = "date",
+  values_to = "value"
+)
+
+# Group by 'State' and 'date', and calculate the sum of Confirmed Cases
+dead_case_df <- long_data %>%
+  group_by(date) %>%
+  summarize(value_sum = sum(value, na.rm = TRUE))
+
+# Convert date column to Date format
+dead_case_df$date <- as.Date(dead_case_df$date)
+
+# Aggregate data to monthly level using mean for each column
+dead_case_df <- dead_case_df %>%
+  group_by(date = format(date, "%Y-%m")) %>%
+  summarize(value_sum = mean(value_sum, na.rm = TRUE))
+
+# Transform the date column type with specified format
+dead_case_df$date <- as.Date(paste0(dead_case_df$date, "-01-01"))
+
+# Create time-series
+dead_ts <- ts(dead_case_df$value_sum, start = c(year(min(dead_case_df$date)), month(min(dead_case_df$date))), end = c(year(max(dead_case_df$date)), month(max(dead_case_df$date))), frequency = 12)
+
+hos_df <- read_csv('Datasets/COVID-19_hos.csv')
+
+# data glimpse
+cols_show <- c('state', 'date', 'inpatient_beds', 'inpatient_beds_used_covid', 'inpatient_bed_covid_utilization')
+t <- hos_df[, cols_show]
+
+# Group by 'date', and calculate the sum of Confirmed Cases
+hos <- t %>%
+  group_by(date) %>%
+  summarize(value_sum1 = sum(inpatient_beds, na.rm = TRUE),
+            value_sum2 = sum(inpatient_beds_used_covid, na.rm = TRUE),
+            value_sum3 = mean(inpatient_bed_covid_utilization, na.rm = TRUE))
+
+# Convert date column to Date format
+hos$date <- as.Date(hos$date)
+
+# Aggregate data to monthly level using mean for each column
+hos <- hos %>%
+  group_by(date = format(date, "%Y-%m")) %>%
+  summarize(value_sum1 = mean(value_sum1, na.rm = TRUE),
+            value_sum2 = mean(value_sum2, na.rm = TRUE),
+            value_sum3 = mean(value_sum3, na.rm = TRUE))
+
+# Transform the date column type with specified format
+hos$date <- as.Date(paste0(hos$date, "-01-01"))
+
+# Create time-series
+hos_ts1 <- ts(hos$value_sum1, start = c(year(min(hos$date)), month(min(hos$date))), end = c(year(max(hos$date)), month(max(hos$date))), frequency = 12)
+
+hos_ts2 <- ts(hos$value_sum2, start = c(year(min(hos$date)), month(min(hos$date))), end = c(year(max(hos$date)), month(max(hos$date))), frequency = 12)
+
+hos_ts3 <- ts(hos$value_sum3, start = c(year(min(hos$date)), month(min(hos$date))), end = c(year(max(hos$date)), month(max(hos$date))), frequency = 12)
+
+unemp <- read_csv('Datasets/unemployment.csv')
+key_cols <- c("Location")
+value_cols <- setdiff(names(unemp), key_cols)
+unemp1 <- pivot_longer(
+  unemp,
+  cols = value_cols,
+  names_to = "Time",
+  values_to = "Unemployment"
+)
+
+# Convert Time column to Date format
+unemp1$Time <- as.Date(paste0(unemp1$Time, "-01"))
+
+# Convert Unemployment column to numeric (floating-point) format
+unemp1$Unemployment <- as.numeric(unemp1$Unemployment)
+
+# Focus on US
+unemp2 <- unemp1[unemp1$Location =='United States',]
+
+# Create time-series
+unemploy_ts <- ts(unemp2$Unemployment, start = c(year(min(unemp2$Time)), month(min(unemp2$Time))), end = c(year(max(unemp2$Time)), month(max(unemp2$Time))), frequency = 12)
+
+
+# Set options to suppress warnings
+options("getSymbols.warning4.0" = FALSE)
+options("getSymbols.yahoo.warning" = FALSE)
+
+# Define the tickers
+tickers <- c("PFE")
+
+# Loop through tickers to get stock data
+for (ticker in tickers) {
+  getSymbols(ticker,
+             from = "2020-01-01",
+             to = "2024-01-01")
+}
+
+# Create a data frame with adjusted closing prices
+stock <- data.frame(date = index(PFE), value = Ad(PFE))
+
+# Create time-series
+stock_ts <- ts(stock$PFE.Adjusted, start = c(year(min(stock$date)), month(min(stock$date))), end = c(year(max(stock$date)), month(max(stock$date))), frequency = 12)
+
+demo <- read_excel('Datasets/party.xlsx',sheet = 'Democrat')
+inde <- read_excel('Datasets/party.xlsx',sheet = 'Independent')
+rep <- read_excel('Datasets/party.xlsx',sheet = 'Republican')
+
+# Transform the wide dataframe into a long dataframe
+key_cols <- c("Attitude")
+value_cols <- setdiff(names(demo), key_cols)
+demo1 <- pivot_longer(
+  demo,
+  cols = value_cols,
+  names_to = "Time",
+  values_to = "democrat"
+)
+
+inde1 <- pivot_longer(
+  inde,
+  cols = value_cols,
+  names_to = "Time",
+  values_to = "independent"
+)
+
+rep1 <- pivot_longer(
+  rep,
+  cols = value_cols,
+  names_to = "Time",
+  values_to = "republican"
+)
+
+# Combine these three datasets together
+combined_data <- full_join(demo1, inde1, by = c("Time", "Attitude")) %>%
+  full_join(rep1, by = c("Time", "Attitude"))
+combined_data1 <- combined_data[combined_data$Attitude=='Favorable',]
+
+# Define the key and value columns for pivoting
+key_cols <- c("Attitude", "Time")
+value_cols <- setdiff(names(combined_data1), key_cols)
+
+# Pivot the data from wide to long
+combined_data2 <- pivot_longer(
+  combined_data1,
+  cols = value_cols,
+  names_to = "Party",
+  values_to = "value"
+)
+
+# Convert date column to Date format
+combined_data2$Time <- as.Date(combined_data2$Time)
+
+# Subset to each party
+demo_data <- combined_data2[combined_data2$Party=='democrat',]
+inde_data <- combined_data2[combined_data2$Party=='independent',]
+rep_data <- combined_data2[combined_data2$Party=='republican',]
+
+# Create time-series
+demo_ts <- ts(demo_data$value, start = c(year(min(demo_data$Time)), month(min(demo_data$Time))), end = c(year(max(demo_data$Time)), month(max(demo_data$Time))), frequency = 12)
+
+inde_ts <- ts(inde_data$value, start = c(year(min(inde_data$Time)), month(min(inde_data$Time))), end = c(year(max(inde_data$Time)), month(max(inde_data$Time))), frequency = 12)
+
+rep_ts <- ts(rep_data$value, start = c(year(min(rep_data$Time)), month(min(rep_data$Time))), end = c(year(max(rep_data$Time)), month(max(rep_data$Time))), frequency = 12)
+
+```
+
+
+# 1. ACF & PACF Plots
+
+::: panel-tabset
+### Vaccination Rate
+```{r, message=FALSE,warning=FALSE}
+d_vacc_acf <- ggAcf(d_vacc_ts)+ggtitle("ACF Plot for Daily Vaccinations per Million") + theme_bw() +
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+d_vacc_acf1 <- ggAcf(diff(d_vacc_ts))+ggtitle("ACF Plot for Differented Daily Vaccinations per Million") + theme_bw() +
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+d_vacc_pacf <- ggPacf(d_vacc_ts)+ggtitle("PACF Plot for Daily Vaccinations per Million") + theme_bw()+
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+d_vacc_pacf1 <- ggPacf(diff(d_vacc_ts))+ggtitle("PACF Plot for Differented Daily Vaccinations per Million") + theme_bw()+
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+grid.arrange(d_vacc_acf, d_vacc_pacf, nrow=2)
+grid.arrange(d_vacc_acf1, d_vacc_pacf1, nrow=2)
+
+p_vacc_acf <- ggAcf(p_vacc_ts)+ggtitle("ACF Plot for People Vaccinated per Hundred") + theme_bw() +
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+p_vacc_acf1 <- ggAcf(diff(p_vacc_ts))+ggtitle("ACF Plot for Differented People Vaccinated per Hundred") + theme_bw() +
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+p_vacc_pacf <- ggPacf(p_vacc_ts)+ggtitle("PACF Plot for People Vaccinated per Hundred") + theme_bw()+
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+p_vacc_pacf1 <- ggPacf(diff(p_vacc_ts))+ggtitle("PACF Plot for Differented People Vaccinated per Hundred") + theme_bw()+
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+grid.arrange(p_vacc_acf, p_vacc_pacf, nrow=2)
+grid.arrange(p_vacc_acf1, p_vacc_pacf1, nrow=2)
+
+pf_vacc_acf <- ggAcf(pf_vacc_ts)+ggtitle("ACF Plot for People Fully Vaccinated per Hundred") + theme_bw() +
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+pf_vacc_acf1 <- ggAcf(diff(pf_vacc_ts))+ggtitle("ACF Plot for Differented People Fully Vaccinated per Hundred") + theme_bw() +
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+pf_vacc_pacf <- ggPacf(pf_vacc_ts)+ggtitle("PACF Plot for People Fully Vaccinated per Hundred") + theme_bw()+
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+pf_vacc_pacf1 <- ggPacf(diff(pf_vacc_ts))+ggtitle("PACF Plot for Differented People Fully Vaccinated per Hundred") + theme_bw()+
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196")
+grid.arrange(pf_vacc_acf, pf_vacc_pacf, nrow=2)
+grid.arrange(pf_vacc_acf1, pf_vacc_pacf1, nrow=2)
+```
+
+### Newly Confirmed Cases & Death Cases
+```{r, message=FALSE,warning=FALSE}
+case_acf <- ggAcf(case_ts)+ggtitle("ACF Plot for Newly Confirmed Cases") + theme_bw() +
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+case_acf1 <- ggAcf(diff(case_ts))+ggtitle("ACF Plot for Differented Newly Confirmed Cases") + theme_bw() +
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+case_pacf <- ggPacf(case_ts)+ggtitle("PACF Plot for Newly Confirmed Cases") + theme_bw()+
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+case_pacf1 <- ggPacf(diff(case_ts))+ggtitle("PACF Plot for Differented Newly Confirmed Cases") + theme_bw()+
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+grid.arrange(case_acf, case_pacf, nrow=2)
+grid.arrange(case_acf1, case_pacf1, nrow=2)
+
+dead_acf <- ggAcf(dead_ts)+ggtitle("ACF Plot for Dead Cases") + theme_bw() +
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+dead_acf1 <- ggAcf(diff(dead_ts))+ggtitle("ACF Plot for Differented Dead Cases") + theme_bw() +
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+dead_pacf <- ggPacf(dead_ts)+ggtitle("PACF Plot for Dead Cases") + theme_bw()+
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+dead_pacf1 <- ggPacf(diff(dead_ts))+ggtitle("PACF Plot for Differented Dead Cases") + theme_bw()+
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+grid.arrange(dead_acf, dead_pacf, nrow=2)
+grid.arrange(dead_acf1, dead_pacf1, nrow=2)
+```
+
+### COVID-19 Hospitalization Number
+```{r, message=FALSE,warning=FALSE}
+hos1_acf <- ggAcf(hos_ts1)+ggtitle("ACF Plot for Number of Inpatient Beds") + theme_bw() +
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+hos1_acf1 <- ggAcf(diff(hos_ts1))+ggtitle("ACF Plot for Differented Number of Inpatient Beds") + theme_bw() +
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+hos1_pacf <- ggPacf(hos_ts1)+ggtitle("PACF Plot for Number of Inpatient Beds") + theme_bw()+
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+hos1_pacf1 <- ggPacf(diff(hos_ts1))+ggtitle("PACF Plot for Differented Number of Inpatient Beds") + theme_bw()+
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+grid.arrange(hos1_acf, hos1_pacf, nrow=2)
+grid.arrange(hos1_acf1, hos1_pacf1, nrow=2)
+
+hos2_acf <- ggAcf(hos_ts2)+ggtitle("ACF Plot for Number of Inpatient Beds Used for COVID") + theme_bw() +
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+hos2_acf1 <- ggAcf(diff(hos_ts2))+ggtitle("ACF Plot for Differented Number of Inpatient Beds Used for COVID") + theme_bw() +
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+hos2_pacf <- ggPacf(hos_ts2)+ggtitle("PACF Plot for Number of Inpatient Beds Used for COVID") + theme_bw()+
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+hos2_pacf1 <- ggPacf(diff(hos_ts2))+ggtitle("PACF Plot for Differented Number of Inpatient Beds Used for COVID") + theme_bw()+
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+grid.arrange(hos2_acf, hos2_pacf, nrow=2)
+grid.arrange(hos2_acf1, hos2_pacf1, nrow=2)
+
+hos3_acf <- ggAcf(hos_ts3)+ggtitle("ACF Plot for Utilization Rate of Inpatient Beds for COVID") + theme_bw() +
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+hos3_acf1 <- ggAcf(diff(hos_ts3))+ggtitle("ACF Plot for Differented Utilization Rate of Inpatient Beds for COVID") + theme_bw() +
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+hos3_pacf <- ggPacf(hos_ts3)+ggtitle("PACF Plot for Utilization Rate of Inpatient Beds for COVID") + theme_bw()+
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+hos3_pacf1 <- ggPacf(diff(hos_ts3))+ggtitle("PACF Plot for Differented Utilization Rate of Inpatient Beds for COVID") + theme_bw()+
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+grid.arrange(hos3_acf, hos3_pacf, nrow=2)
+grid.arrange(hos3_acf1, hos3_pacf1, nrow=2)
+```
+
+### Economic Indicators (Unemployment Rate)
+```{r, message=FALSE,warning=FALSE}
+emp_acf <- ggAcf(unemploy_ts)+ggtitle("ACF Plot for Unemployment Rate") + theme_bw() +
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+emp_acf1 <- ggAcf(diff(unemploy_ts))+ggtitle("ACF Plot for Differented Unemployment Rate") + theme_bw() +
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+emp_pacf <- ggPacf(unemploy_ts)+ggtitle("PACF Plot for Unemployment Rate") + theme_bw()+
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+emp_pacf1 <- ggPacf(diff(unemploy_ts))+ggtitle("PACF Plot for Differented Unemployment Rate") + theme_bw()+
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+grid.arrange(emp_acf, emp_pacf, nrow=2)
+grid.arrange(emp_acf1, emp_pacf1, nrow=2)
+```
+
+### Medical Corporation (Pfizer) Stock Price
+```{r, message=FALSE,warning=FALSE}
+stock_acf <- ggAcf(stock_ts)+ggtitle("ACF Plot for Pfizer Stock Price") + theme_bw() +
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+stock_acf1 <- ggAcf(diff(stock_ts))+ggtitle("ACF Plot for Differented Pfizer Stock Price") + theme_bw() +
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+stock_pacf <- ggPacf(stock_ts)+ggtitle("PACF Plot for Pfizer Stock Price") + theme_bw()+
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+stock_pacf1 <- ggPacf(diff(stock_ts))+ggtitle("PACF Plot for Differented Pfizer Stock Price") + theme_bw()+
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+grid.arrange(stock_acf, stock_pacf, nrow=2)
+grid.arrange(stock_acf1, stock_pacf1, nrow=2)
+```
+
+### Party Support Rate
+```{r, message=FALSE,warning=FALSE}
+demo_acf <- ggAcf(demo_ts)+ggtitle("ACF Plot for Support Rate for Democratic") + theme_bw() +
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+demo_acf1 <- ggAcf(diff(demo_ts))+ggtitle("ACF Plot for Differented Support Rate for Democratic") + theme_bw() +
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+demo_pacf <- ggPacf(demo_ts)+ggtitle("PACF Plot for Support Rate for Democratic") + theme_bw()+
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+demo_pacf1 <- ggPacf(diff(demo_ts))+ggtitle("PACF Plot for Differented Support Rate for Democratic") + theme_bw()+
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+grid.arrange(demo_acf, demo_pacf, nrow=2)
+grid.arrange(demo_acf1, demo_pacf1, nrow=2)
+
+inde_acf <- ggAcf(inde_ts)+ggtitle("ACF Plot for Support Rate for Independent") + theme_bw() +
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+inde_acf1 <- ggAcf(diff(inde_ts))+ggtitle("ACF Plot for Differented Support Rate for Independent") + theme_bw() +
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+inde_pacf <- ggPacf(inde_ts)+ggtitle("PACF Plot for Support Rate for Independent") + theme_bw()+
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+inde_pacf1 <- ggPacf(diff(inde_ts))+ggtitle("PACF Plot for Differented Support Rate for Independent") + theme_bw()+
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196")
+grid.arrange(inde_acf, inde_pacf, nrow=2)
+grid.arrange(inde_acf1, inde_pacf1, nrow=2)
+
+rep_acf <- ggAcf(rep_ts)+ggtitle("ACF Plot for Support Rate for Republican") + theme_bw() +
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+rep_acf1 <- ggAcf(diff(rep_ts))+ggtitle("ACF Plot for Differented Support Rate for Republican") + theme_bw() +
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+rep_pacf <- ggPacf(rep_ts)+ggtitle("PACF Plot for Support Rate for Republican") + theme_bw()+
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+rep_pacf1 <- ggPacf(diff(rep_ts))+ggtitle("PACF Plot for Differented Support Rate for Republican") + theme_bw()+
+  geom_segment(lineend = "butt", color = "#5a3196") +
+    geom_hline(yintercept = 0, color = "#5a3196") 
+grid.arrange(rep_acf, rep_pacf, nrow=2)
+grid.arrange(rep_acf1, rep_pacf1, nrow=2)
+
+```
+:::
+
+**Number of Daily Vaccinations Per Million:** ACF Plot has significant lags at 1 and 2 so p = 1, 2. PACF Plot has significant lags at 1 and 2 so q = 1, 2. Regarding stationarity, the ACF plot reveals autocorrelation values surpassing the threshold represented by the dashed line. Additionally, the presence of autocorrelation values above the threshold in the ACF plot indicates stationarity; this suggests that the time series has consistent, predictable patterns over time, confirmed by significant autocorrelation at multiple lags. This stationary behavior is crucial for the effective modeling and forecasting of the series.
+
+**Number of People Vaccinated Per Hundred:** ACF Plot has significant lags at 1-3 so p = 1, 2, 3. PACF Plot has significant lags at 1 so q = 1. Regarding stationarity, the ACF plot reveals autocorrelation values surpassing the threshold represented by the dashed line.Additionally, the presence of autocorrelation values above the threshold in the ACF plot indicates stationarity; this suggests that the time series has consistent, predictable patterns over time, confirmed by significant autocorrelation at multiple lags. This stationary behavior is crucial for the effective modeling and forecasting of the series.
+
+**Number of People Fully Vaccinated Per Hundred:** ACF Plot has significant lags at 1-3 so p = 1, 2, 3. PACF Plot has significant lags at 1 so q = 1. Regarding stationarity, the ACF plot reveals autocorrelation values surpassing the threshold represented by the dashed line. Additionally, the presence of autocorrelation values above the threshold in the ACF plot indicates stationarity; this suggests that the time series has consistent, predictable patterns over time, confirmed by significant autocorrelation at multiple lags. This stationary behavior is crucial for the effective modeling and forecasting of the series.
+
+**Number of Newly Confirmed Cases:** ACF Plot has significant lags at 1-10  so p = 1, 2, 3，4, 5, 6, 7, 8, 9, 10. However, in general we care about only the first couple of lags, in this case the first 3. PACF Plot has significant lags at 1 so q = 1. Regarding stationarity, the ACF plot reveals autocorrelation values surpassing the threshold represented by the dashed line.Additionally, the presence of autocorrelation values above the threshold in the ACF plot indicates stationarity; this suggests that the time series has consistent, predictable patterns over time, confirmed by significant autocorrelation at multiple lags. This stationary behavior is crucial for the effective modeling and forecasting of the series.
+
+**Number of Death Cases:** ACF Plot has significant lags at 1-10  so p = 1, 2, 3，4, 5, 6, 7, 8, 9, 10. However, in general we care about only the first couple of lags, in this case the first 3. PACF Plot has significant lags at 1 so q = 1. Regarding stationarity, the ACF plot reveals autocorrelation values surpassing the threshold represented by the dashed line. Additionally, the presence of autocorrelation values above the threshold in the ACF plot indicates stationarity; this suggests that the time series has consistent, predictable patterns over time, confirmed by significant autocorrelation at multiple lags. This stationary behavior is crucial for the effective modeling and forecasting of the series.
+
+**Number of Inpatient Beds:** ACF Plot has significant lags at 1 and 2 so p = 1, 2. PACF Plot has significant lags at 1 and 4 so q = 1, 4. Regarding stationarity, the ACF plot reveals autocorrelation values surpassing the threshold represented by the dashed line.Additionally, the presence of autocorrelation values above the threshold in the ACF plot indicates stationarity; this suggests that the time series has consistent, predictable patterns over time, confirmed by significant autocorrelation at multiple lags. This stationary behavior is crucial for the effective modeling and forecasting of the series.
+
+**Number of Inpatient Beds Used for COVID:** ACF Plot has significant lags at 1 and 2 so p = 1, 2. PACF Plot has significant lags at 1 and 2 so q = 1, 2. Regarding stationarity, the ACF plot reveals autocorrelation values surpassing the threshold represented by the dashed line. Additionally, the presence of autocorrelation values above the threshold in the ACF plot indicates stationarity; this suggests that the time series has consistent, predictable patterns over time, confirmed by significant autocorrelation at multiple lags. This stationary behavior is crucial for the effective modeling and forecasting of the series.
+
+**Utilization Rate for Inpatient Beds Used for COVID:** ACF Plot has significant lags at 1 so p = 1. PACF Plot has significant lags at 1-3 so q = 1, 2, 3. Regarding stationarity, the ACF plot reveals autocorrelation values surpassing the threshold represented by the dashed line. Additionally, the presence of autocorrelation values above the threshold in the ACF plot indicates stationarity; this suggests that the time series has consistent, predictable patterns over time, confirmed by significant autocorrelation at multiple lags. This stationary behavior is crucial for the effective modeling and forecasting of the series.
+
+**Unemployment Rate:** ACF Plot has significant lags at 1 so p = 1. PACF Plot has significant lags at 1 so q = 1. Regarding stationarity, the ACF plot reveals autocorrelation values surpassing the threshold represented by the dashed line. Additionally, the presence of autocorrelation values above the threshold in the ACF plot indicates stationarity; this suggests that the time series has consistent, predictable patterns over time, confirmed by significant autocorrelation at multiple lags. This stationary behavior is crucial for the effective modeling and forecasting of the series.
+
+**Pfizer Stock Price: ** The ACF and PACF plots provide critical insights for determining the parameters of our time series model. The ACF plot shows a significant lag at 1-10, suggesting a p-value of 1-10 for the AR component. Similarly, the PACF plot shows a significant lag at 1, indicating a q-value of 1 for the MA component. Additionally, the presence of autocorrelation values above the threshold in the ACF plot indicates stationarity; this suggests that the time series has consistent, predictable patterns over time, confirmed by significant autocorrelation at multiple lags. This stationary behavior is crucial for the effective modeling and forecasting of the series.
+
+**Support Rate for Democratic:** There are no lags over the dashed line in the ACF plot, which indicates that there is no significant autocorrelation in the series beyond the lag indicated by the highest peak. In this cases, the ACF plot suggests that there is no systematic relationship between the observations at different time points. This lack of autocorrelation implies that the series is likely stationary, as there is no discernible pattern of dependence between consecutive observations.
+
+**Support Rate for Independent:** There are no lags over the dashed line in the ACF plot, which indicates that there is no significant autocorrelation in the series beyond the lag indicated by the highest peak. In this cases, the ACF plot suggests that there is no systematic relationship between the observations at different time points. This lack of autocorrelation implies that the series is likely stationary, as there is no discernible pattern of dependence between consecutive observations.
+
+**Support Rate for Republican:** The ACF and PACF plots provide critical insights for determining the parameters of our time series model. The ACF plot shows a significant lag at 1, suggesting a p-value of 1 for the AR component. Similarly, the PACF plot shows a significant lag at 1, indicating a q-value of 1 for the MA component. Additionally, the presence of autocorrelation values above the threshold in the ACF plot indicates stationarity; this suggests that the time series has consistent, predictable patterns over time, confirmed by significant autocorrelation at multiple lags. This stationary behavior is crucial for the effective modeling and forecasting of the series.
+
+
+# 2. Dickey-Fuller Test
+
+::: panel-tabset
+### Vaccination Rate
+```{r, message=FALSE,warning=FALSE}
+tseries::adf.test(d_vacc_ts)
+
+p_vacc_ts1 <- na.omit(p_vacc_ts)
+tseries::adf.test(p_vacc_ts1)
+
+pf_vacc_ts1 <- na.omit(pf_vacc_ts)
+tseries::adf.test(pf_vacc_ts1)
+```
+
+### Newly Confirmed Cases & Death Cases
+```{r, message=FALSE,warning=FALSE}
+tseries::adf.test(case_ts)
+
+tseries::adf.test(dead_ts)
+```
+
+### COVID-19 Hospitalization Number
+```{r, message=FALSE,warning=FALSE}
+tseries::adf.test(hos_ts1)
+
+tseries::adf.test(hos_ts2)
+
+tseries::adf.test(hos_ts3)
+```
+
+### Economic Indicators (Unemployment Rate)
+```{r, message=FALSE,warning=FALSE}
+tseries::adf.test(unemploy_ts)
+```
+
+### Medical Corporation (Pfizer) Stock Price
+```{r, message=FALSE,warning=FALSE}
+tseries::adf.test(stock_ts)
+```
+
+### Party Support Rate
+```{r, message=FALSE,warning=FALSE}
+tseries::adf.test(demo_ts)
+
+tseries::adf.test(inde_ts)
+
+tseries::adf.test(rep_ts)
+```
+:::
+
+In our project, we delve into an array of statistical series to discern patterns and ascertain stationarity, crucial for understanding sentiment impacts on the stock prices of leading tech companies and broader socio-economic indicators. Our methodology employs rigorous statistical tests, complemented by Autocorrelation Function (ACF) plots, to scrutinize the data's behavior over time.
+
+
+**Number of Daily Vaccinations Per Million:** A p-value below 0.05 signals sufficient grounds to reject the null hypothesis at a 5% significance level, indicating stationarity in our series. This finding, however, contrasts with prior conclusions, suggesting the ACF plot's superior accuracy, which points toward non-stationarity.
+
+**Number of People Vaccinated Per Hundred:** The p-value, exceeding 0.05, reveals an insufficient basis to reject the null hypothesis, indicating a non-stationary series. This necessitates further modifications for stationarity, reinforcing conclusions from earlier analyses, including a significant lag order of 3.
+
+**Number of People Fully Vaccinated Per Hundred:** With a p-value below 0.05, we find adequate evidence to reject the null hypothesis, suggesting stationarity. Yet, this contradicts previous findings, with the ACF plot indicating non-stationarity, challenging our initial conclusion.
+
+**Number of Newly Confirmed Cases:** A p-value above 0.05 indicates a lack of sufficient evidence to dismiss the null hypothesis, suggesting non-stationarity. This aligns with earlier observations, necessitating adjustments for stationarity, including a noted lag order of 3.
+
+**Number of Death Cases:** The p-value, again above 0.05, underscores a lack of adequate evidence to reject the null hypothesis, signaling a non-stationary series and the need for further data adjustments. This finding is consistent with prior analyses.
+
+**Number of Inpatient Beds:** Here, a p-value below 0.05 provides enough justification to reject the null hypothesis, suggesting a stationary series. Nevertheless, this result is at odds with previous analyses, indicating non-stationarity based on the ACF plot.
+
+**Number of Inpatient Beds Used for COVID:** The p-value surpassing 0.05 suggests insufficient evidence to reject the null hypothesis, pointing to a non-stationary series that requires adjustments, corroborating earlier findings and the significance of a lag order of 3.
+
+**Utilization Rate for Inpatient Beds Used for COVID:** A high p-value indicates the series' non-stationarity, echoing the need for adjustments to achieve stationarity and supporting earlier conclusions, including a lag order of 3.
+
+**Unemployment Rate:** A low p-value indicates sufficient evidence to reject the null hypothesis, suggesting stationarity. However, this contrasts with previous examples, with the ACF plot indicating non-stationarity.
+
+**Pfizer Stock Price: ** With a p-value exceeding 0.05, there's insufficient evidence to reject the null hypothesis, indicating a non-stationary series requiring adjustments, consistent with earlier findings, including a lag order of 3.
+
+**Support Rate for Democratic:** A high p-value reveals a lack of evidence to reject the null hypothesis, suggesting non-stationarity and the need for adjustments, contradicting earlier conclusions of stationarity.
+
+**Support Rate for Independent:** A low p-value provides ample evidence to reject the null hypothesis, indicating a stationary series. This finding aligns with prior conclusions, affirming the series' stationarity.
+
+**Support Rate for Republican:** The p-value, exceeding 0.05, indicates insufficient evidence to reject the null hypothesis, suggesting a non-stationary series that necessitates adjustments, in line with earlier analyses.
+
+Through this detailed exploration, we meticulously gauge the stationarity of diverse series, juxtaposing statistical test results against ACF plot insights to draw nuanced conclusions on the dynamic interplay between sentiment, stock price movements, and broader socio-economic indicators.
+
+# 3. Detrend VS Difference
+
+::: panel-tabset
+### Vaccination Rate
+```{r, message=FALSE,warning=FALSE}
+fit_d_vacc = lm(d_vacc_ts~time(d_vacc_ts), na.action=NULL) 
+plot1<-autoplot(resid(fit_d_vacc), main="Detrended", colour = "#5a3196") + theme_bw()
+plot2<-autoplot(diff(d_vacc_ts), main="First Difference", colour = "#5a3196") + theme_bw()
+
+grid.arrange(plot1, plot2,nrow=2)
+
+fit_p_vacc = lm(p_vacc_ts1~time(p_vacc_ts1), na.action=NULL) 
+plot1<-autoplot(resid(fit_p_vacc), main="Detrended", colour = "#5a3196") + theme_bw()
+plot2<-autoplot(diff(p_vacc_ts1), main="First Difference", colour = "#5a3196") + theme_bw()
+
+grid.arrange(plot1, plot2,nrow=2)
+
+fit_pf_vacc = lm(pf_vacc_ts1~time(pf_vacc_ts1), na.action=NULL) 
+plot1<-autoplot(resid(fit_pf_vacc), main="Detrended", colour = "#5a3196") + theme_bw()
+plot2<-autoplot(diff(pf_vacc_ts1), main="First Difference", colour = "#5a3196") + theme_bw()
+
+grid.arrange(plot1, plot2,nrow=2)
+```
+
+### Newly Confirmed Cases & Death Cases
+```{r, message=FALSE,warning=FALSE}
+fit_case = lm(case_ts~time(case_ts), na.action=NULL) 
+plot1<-autoplot(resid(fit_case), main="Detrended", colour = "#5a3196") + theme_bw()
+plot2<-autoplot(diff(case_ts), main="First Difference", colour = "#5a3196") + theme_bw()
+
+grid.arrange(plot1, plot2,nrow=2)
+
+fit_dead = lm(dead_ts~time(dead_ts), na.action=NULL) 
+plot1<-autoplot(resid(fit_dead), main="Detrended", colour = "#5a3196") + theme_bw()
+plot2<-autoplot(diff(dead_ts), main="First Difference", colour = "#5a3196") + theme_bw()
+
+grid.arrange(plot1, plot2,nrow=2)
+```
+
+### COVID-19 Hospitalization Number
+```{r, message=FALSE,warning=FALSE}
+fit_hos1 = lm(hos_ts1~time(hos_ts1), na.action=NULL) 
+plot1<-autoplot(resid(fit_hos1), main="Detrended", colour = "#5a3196") + theme_bw()
+plot2<-autoplot(diff(hos_ts1), main="First Difference", colour = "#5a3196") + theme_bw()
+
+grid.arrange(plot1, plot2,nrow=2)
+
+fit_hos2 = lm(hos_ts2~time(hos_ts2), na.action=NULL) 
+plot1<-autoplot(resid(fit_hos2), main="Detrended", colour = "#5a3196") + theme_bw()
+plot2<-autoplot(diff(hos_ts2), main="First Difference", colour = "#5a3196") + theme_bw()
+
+grid.arrange(plot1, plot2,nrow=2)
+
+fit_hos3 = lm(hos_ts3~time(hos_ts3), na.action=NULL) 
+plot1<-autoplot(resid(fit_hos3), main="Detrended", colour = "#5a3196") + theme_bw()
+plot2<-autoplot(diff(hos_ts3), main="First Difference", colour = "#5a3196") + theme_bw()
+
+grid.arrange(plot1, plot2,nrow=2)
+```
+
+### Economic Indicators (Unemployment Rate)
+```{r, message=FALSE,warning=FALSE}
+fit_emp = lm(unemploy_ts~time(unemploy_ts), na.action=NULL) 
+plot1<-autoplot(resid(fit_emp), main="Detrended", colour = "#5a3196") + theme_bw()
+plot2<-autoplot(diff(unemploy_ts), main="First Difference", colour = "#5a3196") + theme_bw()
+
+grid.arrange(plot1, plot2,nrow=2)
+```
+
+### Medical Corporation (Pfizer) Stock Price
+```{r, message=FALSE,warning=FALSE}
+fit_stock = lm(stock_ts~time(stock_ts), na.action=NULL) 
+plot1<-autoplot(resid(fit_stock), main="Detrended", colour = "#5a3196") + theme_bw()
+plot2<-autoplot(diff(stock_ts), main="First Difference", colour = "#5a3196") + theme_bw()
+
+grid.arrange(plot1, plot2,nrow=2)
+```
+
+### Party Support Rate
+```{r, message=FALSE,warning=FALSE}
+fit_demo = lm(demo_ts~time(demo_ts), na.action=NULL) 
+plot1<-autoplot(resid(fit_demo), main="Detrended", colour = "#5a3196") + theme_bw()
+plot2<-autoplot(diff(demo_ts), main="First Difference", colour = "#5a3196") + theme_bw()
+
+grid.arrange(plot1, plot2,nrow=2)
+
+fit_inde = lm(inde_ts~time(inde_ts), na.action=NULL) 
+plot1<-autoplot(resid(fit_inde), main="Detrended", colour = "#5a3196") + theme_bw()
+plot2<-autoplot(diff(inde_ts), main="First Difference", colour = "#5a3196") + theme_bw()
+
+grid.arrange(plot1, plot2,nrow=2)
+
+fit_rep = lm(rep_ts~time(rep_ts), na.action=NULL) 
+plot1<-autoplot(resid(fit_rep), main="Detrended", colour = "#5a3196") + theme_bw()
+plot2<-autoplot(diff(rep_ts), main="First Difference", colour = "#5a3196") + theme_bw()
+
+grid.arrange(plot1, plot2,nrow=2)
+```
+:::
+
+Detrending and differencing stand as pivotal techniques in the realm of time series analysis, each aimed at achieving the crucial condition of stationarity within a dataset. While navigating the same goal of trend elimination, these methodologies diverge in their approach and application nuances.
+
+Detrending is a targeted process aimed squarely at eradicating the underlying trend from the dataset. This is accomplished by first meticulously estimating the trend component that permeates the time series and then subtracting this estimated trend from the original dataset. The outcome is a transformed series where the original mean has been adjusted to center around zero, effectively neutralizing the trend influence. However, this transformation is not a panacea; detrended data can still exhibit non-stationary characteristics, such as seasonality or variance instabilities, that require further intervention.
+
+Conversely, differencing operates under a broader scope, addressing stationarity by focusing on the differences between consecutive observations. This method is encapsulated by the formula:
+
+$$\Delta y_t = y_t - y_{t-1}$$
+
+where $\Delta y_t$ represents the difference between the current observation $y_t$ and its predecessor $y_{t-1}$. Through this simple yet effective mechanism, differencing excels at mitigating linear trends and highlighting the dynamic changes between data points. Its strength lies particularly in contexts where the time series displays a consistent directional trend, making it a robust choice for such scenarios.
+
+However, it's worth noting that while differencing is adept at ironing out linear trends, it may falter when faced with nonlinear trends or pronounced seasonal fluctuations. The essence of differencing lies in its ability to simplify the series to a form where patterns and structures become more discernable, albeit at the potential cost of oversimplification in certain complex scenarios.
+
+The decision to employ detrending or differencing hinges on a thorough examination of the time series at hand. The specific characteristics of the dataset, including the nature of its trends and seasonalities, dictate the most appropriate method for achieving stationarity. This choice is not merely technical but strategic, laying the foundation for deeper insights and more accurate forecasts in the pursuit of time series analysis.
+
+# 4. ARIMA(p,d,q)
+
+In this section, our aim is to identify all potential values for the autoregressive (AR) parameter (p), the moving average (MA) parameter (q), and the differencing parameter (d) based on the autocorrelation function (ACF) and partial autocorrelation function (PACF) plots of the original data.
+
+To determine the value of p, we examine the most significant lags from the PACF plot, which helps us identify the lag orders where the correlation is not accounted for by previous lags.
+
+Conversely, for the value of q, we focus on the most significant lags from the ACF plot, indicating the correlation between observations at different time lags, which informs us about the lag orders that may require inclusion in the moving average model.
+
+Given that we have differenced all series once, the d value is consistently set to 1. However, when evaluating the Akaike Information Criterion (AIC) and Bayesian Information Criterion (BIC) for model selection, we explore both d=0 and d=1 to ensure comprehensive assessment and comparison of model performance.
+
+**Daily vaccinations time series:**
+- q = 0,1,2
+- d = 0,1
+- p = 0,1,2
+
+**People vaccinated time series:**
+- q = 0,1,2,3
+- d = 0,1 
+- p = 0,1
+
+**People fully vaccinated time series:**
+- q = 0,1,2,3
+- d = 0,1 
+- p = 0,1
+
+**Newly confirmed case time series:**
+- q = 0,1,2,3,4,5,6,7,8,9,10
+- d = 0,1 
+- p = 0,1
+
+**Death case time series:**
+- q = 0,1,2,3,4,5,6,7,8,9,10
+- d = 0,1 
+- p = 0,1
+
+**Inpatient bed time series:**
+- q = 0,1,2
+- d = 0,1 
+- p = 0,1
+
+**Inpatient bed used for COVID time series:**
+- q = 0,1,2
+- d = 0,1 
+- p = 0,1,2
+
+**Utilization rate for inpatient bed used for COVID time series:**
+- q = 0,1
+- d = 0,1 
+- p = 0,1,2,3
+
+**Unemployment rate time series:**
+- q = 0,1
+- d = 0,1 
+- p = 0,1
+
+**Pfizer stock price time series:**
+- q = 0,1,2,3,4,5,6,7,8,9,10
+- d = 0,1 
+- p = 0,1
+
+**Support rate for democratic time series:**
+- q = 0,1
+- d = 0,1 
+- p = 0,1
+
+**Support rate for independent time series:**
+- q = 0,1
+- d = 0,1 
+- p = 0,1
+
+**Support rate for republican time series:**
+- q = 0,1
+- d = 0,1 
+- p = 0,1
+
+
+::: panel-tabset
+### Daily vaccinations time series
+```{r, message=FALSE,warning=FALSE}
+d=1
+i=1
+dvacc= data.frame()
+ls=matrix(rep(NA,6*18),nrow=18) 
+
+
+for (p in 0:2)
+{
+  for(q in 0:2)
+  {
+    for(d in 0:1)
+    {
+      
+      if(p-1+d+q-1<=8) #usual threshold
+      {
+        
+        model<- Arima(diff(d_vacc_ts),order=c(p,d,q),include.drift=TRUE) 
+        ls[i,]= c(p,d,q,model$aic,model$bic,model$aicc)
+        i=i+1
+        #print(i)
+        
+      }
+      
+    }
+  }
+}
+
+dvacc= as.data.frame(ls)
+names(dvacc)= c("p","d","q","AIC","BIC","AICc")
+
+#dvacc
+knitr::kable(dvacc)
+
+dvacc[which.min(dvacc$AIC),]
+
+dvacc[which.min(dvacc$BIC),]
+
+dvacc[which.min(dvacc$AICc),]
+```
+
+The model with the lowest AIC, BIC, AICc is ARIMA(2,1,2). So the best model is ARIMA(2,1,2).
+
+### People vaccinated time series
+```{r, message=FALSE,warning=FALSE}
+d=1
+i=1
+dvacc= data.frame()
+ls=matrix(rep(NA,6*16),nrow=16) 
+
+
+for (p in 0:1)
+{
+  for(q in 0:3)
+  {
+    for(d in 0:1)
+    {
+      
+      if(p-1+d+q-1<=8) #usual threshold
+      {
+        
+        model<- Arima(diff(p_vacc_ts),order=c(p,d,q),include.drift=TRUE) 
+        ls[i,]= c(p,d,q,model$aic,model$bic,model$aicc)
+        i=i+1
+        #print(i)
+        
+      }
+      
+    }
+  }
+}
+
+dvacc= as.data.frame(ls)
+names(dvacc)= c("p","d","q","AIC","BIC","AICc")
+
+#dvacc
+knitr::kable(dvacc)
+
+dvacc[which.min(dvacc$AIC),]
+
+dvacc[which.min(dvacc$BIC),]
+
+dvacc[which.min(dvacc$AICc),]
+```
+
+The model with the lowest AIC, BIC, AICc is ARIMA(0,1,3). So the best model is ARIMA(0,1,3).
+
+
+### People fully vaccinated time series
+```{r, message=FALSE,warning=FALSE}
+d=1
+i=1
+dvacc= data.frame()
+ls=matrix(rep(NA,6*16),nrow=16) 
+
+
+for (p in 0:1)
+{
+  for(q in 0:3)
+  {
+    for(d in 0:1)
+    {
+      
+      if(p-1+d+q-1<=8) #usual threshold
+      {
+        
+        model<- Arima(diff(pf_vacc_ts),order=c(p,d,q),include.drift=TRUE) 
+        ls[i,]= c(p,d,q,model$aic,model$bic,model$aicc)
+        i=i+1
+        #print(i)
+        
+      }
+      
+    }
+  }
+}
+
+dvacc= as.data.frame(ls)
+names(dvacc)= c("p","d","q","AIC","BIC","AICc")
+
+#dvacc
+knitr::kable(dvacc)
+
+dvacc[which.min(dvacc$AIC),]
+
+dvacc[which.min(dvacc$BIC),]
+
+dvacc[which.min(dvacc$AICc),]
+```
+
+The model with the lowest BIC, AICc is ARIMA(0,1,3). While the model with the lowest AIC is ARIMA(1,1,3), the significantly lower BIC and AICc values of ARIMA(0,1,3) underscore its stronger performance. Therefore, based on the evaluation metrics, ARIMA(0,1,3) emerges as the optimal model.
+
+
+### Newly confirmed case time series
+```{r, message=FALSE,warning=FALSE}
+d=1
+i=1
+dvacc= data.frame()
+ls=matrix(rep(NA,6*40),nrow=40) 
+
+
+for (p in 0:1)
+{
+  for(q in 0:10)
+  {
+    for(d in 0:1)
+    {
+      
+      if(p-1+d+q-1<=8) #usual threshold
+      {
+        
+        model<- Arima(diff(case_ts),order=c(p,d,q),include.drift=TRUE) 
+        ls[i,]= c(p,d,q,model$aic,model$bic,model$aicc)
+        i=i+1
+        #print(i)
+        
+      }
+      
+    }
+  }
+}
+
+dvacc= as.data.frame(ls)
+names(dvacc)= c("p","d","q","AIC","BIC","AICc")
+
+#dvacc
+knitr::kable(dvacc)
+
+dvacc[which.min(dvacc$AIC),]
+
+dvacc[which.min(dvacc$BIC),]
+
+dvacc[which.min(dvacc$AICc),]
+```
+
+The model with the lowest AIC, BIC, AICc is ARIMA(0,1,2). So the best model is ARIMA(0,1,2).
+
+### Death case time series
+```{r, message=FALSE,warning=FALSE}
+d=1
+i=1
+dvacc= data.frame()
+ls=matrix(rep(NA,6*40),nrow=40) 
+
+
+for (p in 0:1)
+{
+  for(q in 0:10)
+  {
+    for(d in 0:1)
+    {
+      
+      if(p-1+d+q-1<=8) #usual threshold
+      {
+        
+        model<- Arima(diff(dead_ts),order=c(p,d,q),include.drift=TRUE) 
+        ls[i,]= c(p,d,q,model$aic,model$bic,model$aicc)
+        i=i+1
+        #print(i)
+        
+      }
+      
+    }
+  }
+}
+
+dvacc= as.data.frame(ls)
+names(dvacc)= c("p","d","q","AIC","BIC","AICc")
+
+#dvacc
+knitr::kable(dvacc)
+
+dvacc[which.min(dvacc$AIC),]
+
+dvacc[which.min(dvacc$BIC),]
+
+dvacc[which.min(dvacc$AICc),]
+```
+
+Among the ARIMA models tested, ARIMA(0,1,6) has the lowest AIC value, indicating its superior fit compared to the other models in terms of goodness of fit and complexity. Conversely, ARIMA(0,1,1) boasts the lowest BIC, while ARIMA(0,1,4) exhibits the lowest AICc. Despite these distinctions, a comprehensive evaluation considering all metrics suggests that ARIMA(0,1,6) is the optimal choice, as it strikes a balance between model complexity and performance. Therefore, ARIMA(0,1,6) emerges as the preferred model based on a holistic assessment of AIC, BIC, and AICc values.
+
+### Inpatient bed time series
+```{r, message=FALSE,warning=FALSE}
+d=1
+i=1
+dvacc= data.frame()
+ls=matrix(rep(NA,6*12),nrow=12) 
+
+
+for (p in 0:1)
+{
+  for(q in 0:2)
+  {
+    for(d in 0:1)
+    {
+      
+      if(p-1+d+q-1<=8) #usual threshold
+      {
+        
+        model<- Arima(diff(hos_ts1),order=c(p,d,q),include.drift=TRUE) 
+        ls[i,]= c(p,d,q,model$aic,model$bic,model$aicc)
+        i=i+1
+        #print(i)
+        
+      }
+      
+    }
+  }
+}
+
+dvacc= as.data.frame(ls)
+names(dvacc)= c("p","d","q","AIC","BIC","AICc")
+
+#dvacc
+knitr::kable(dvacc)
+
+dvacc[which.min(dvacc$AIC),]
+
+dvacc[which.min(dvacc$BIC),]
+
+dvacc[which.min(dvacc$AICc),]
+```
+
+The model with the lowest AIC, BIC, AICc is ARIMA(0,1,1). So the best model is ARIMA(0,1,1).
+
+### Inpatient bed used for COVID time series
+```{r, message=FALSE,warning=FALSE}
+d=1
+i=1
+dvacc= data.frame()
+ls=matrix(rep(NA,6*18),nrow=18) 
+
+
+for (p in 0:2)
+{
+  for(q in 0:2)
+  {
+    for(d in 0:1)
+    {
+      
+      if(p-1+d+q-1<=8) #usual threshold
+      {
+        
+        model<- Arima(diff(hos_ts2),order=c(p,d,q),include.drift=TRUE) 
+        ls[i,]= c(p,d,q,model$aic,model$bic,model$aicc)
+        i=i+1
+        #print(i)
+        
+      }
+      
+    }
+  }
+}
+
+dvacc= as.data.frame(ls)
+names(dvacc)= c("p","d","q","AIC","BIC","AICc")
+
+#dvacc
+knitr::kable(dvacc)
+
+dvacc[which.min(dvacc$AIC),]
+
+dvacc[which.min(dvacc$BIC),]
+
+dvacc[which.min(dvacc$AICc),]
+```
+
+The model with the lowest AIC, BIC, AICc is ARIMA(2,1,1). So the best model is ARIMA(2,1,1).
+
+
+### Utilization rate for inpatient bed used for COVID time series
+```{r, message=FALSE,warning=FALSE}
+d=1
+i=1
+dvacc= data.frame()
+ls=matrix(rep(NA,6*16),nrow=16) 
+
+
+for (p in 0:3)
+{
+  for(q in 0:1)
+  {
+    for(d in 0:1)
+    {
+      
+      if(p-1+d+q-1<=8) #usual threshold
+      {
+        
+        model<- Arima(diff(hos_ts3),order=c(p,d,q),include.drift=TRUE) 
+        ls[i,]= c(p,d,q,model$aic,model$bic,model$aicc)
+        i=i+1
+        #print(i)
+        
+      }
+      
+    }
+  }
+}
+
+dvacc= as.data.frame(ls)
+names(dvacc)= c("p","d","q","AIC","BIC","AICc")
+
+#dvacc
+knitr::kable(dvacc)
+
+dvacc[which.min(dvacc$AIC),]
+
+dvacc[which.min(dvacc$BIC),]
+
+dvacc[which.min(dvacc$AICc),]
+```
+
+The model with the lowest AIC, BIC, AICc is ARIMA(2,0,0). So the best model is ARIMA(2,0,0).
+
+### Unemployment rate time series
+```{r, message=FALSE,warning=FALSE}
+d=1
+i=1
+dvacc= data.frame()
+ls=matrix(rep(NA,6*8),nrow=8) 
+
+
+for (p in 0:1)
+{
+  for(q in 0:1)
+  {
+    for(d in 0:1)
+    {
+      
+      if(p-1+d+q-1<=8) #usual threshold
+      {
+        
+        model<- Arima(diff(unemploy_ts),order=c(p,d,q),include.drift=TRUE) 
+        ls[i,]= c(p,d,q,model$aic,model$bic,model$aicc)
+        i=i+1
+        #print(i)
+        
+      }
+      
+    }
+  }
+}
+
+dvacc= as.data.frame(ls)
+names(dvacc)= c("p","d","q","AIC","BIC","AICc")
+
+#dvacc
+knitr::kable(dvacc)
+
+dvacc[which.min(dvacc$AIC),]
+
+dvacc[which.min(dvacc$BIC),]
+
+dvacc[which.min(dvacc$AICc),]
+```
+
+The model with the lowest AIC, AICc is ARIMA(1,0,1). While the model with the lowest BIC is ARIMA(0,0,0), the significantly lower AIC and AICc values of ARIMA(1,0,1) underscore its stronger performance. Therefore, based on the evaluation metrics, ARIMA(1,0,1) emerges as the optimal model.
+
+### Pfizer stock price time series
+```{r, message=FALSE,warning=FALSE}
+d = 1
+i = 1
+dvacc = data.frame()
+ls = matrix(rep(NA, 6*39), nrow = 39)
+
+for (p in 0:1) {
+  for (q in 0:10) {
+    for (d in 0:1) {
+      if (p - 1 + d + q - 1 <= 8) { # Usual threshold
+        tryCatch({
+          model <- Arima(diff(stock_ts), order = c(p, d, q), include.drift = TRUE) 
+          ls[i, ] = c(p, d, q, model$aic, model$bic, model$aicc)
+          i = i + 1
+        }, error = function(e) {
+          cat("Error occurred for p =", p, ", d =", d, ", q =", q, ":", conditionMessage(e), "\n")
+        })
+      }
+    }
+  }
+}
+
+dvacc = as.data.frame(ls)
+names(dvacc) = c("p", "d", "q", "AIC", "BIC", "AICc")
+
+
+#dvacc
+knitr::kable(dvacc)
+
+dvacc[which.min(dvacc$AIC),]
+
+dvacc[which.min(dvacc$BIC),]
+
+dvacc[which.min(dvacc$AICc),]
+```
+
+The model with the lowest AIC, AICc is ARIMA(1,0,3). While the model with the lowest BIC is ARIMA(1,0,0), the significantly lower AIC and AICc values of ARIMA(1,0,3) underscore its stronger performance. Therefore, based on the evaluation metrics, ARIMA(1,0,3) emerges as the optimal model.
+
+### Support rate for democratic time series
+```{r, message=FALSE,warning=FALSE}
+d=1
+i=1
+dvacc= data.frame()
+ls=matrix(rep(NA,6*8),nrow=8) 
+
+
+for (p in 0:1)
+{
+  for(q in 0:1)
+  {
+    for(d in 0:1)
+    {
+      
+      if(p-1+d+q-1<=8) #usual threshold
+      {
+        
+        model<- Arima(diff(demo_ts),order=c(p,d,q),include.drift=TRUE) 
+        ls[i,]= c(p,d,q,model$aic,model$bic,model$aicc)
+        i=i+1
+        #print(i)
+        
+      }
+      
+    }
+  }
+}
+
+dvacc= as.data.frame(ls)
+names(dvacc)= c("p","d","q","AIC","BIC","AICc")
+
+#dvacc
+knitr::kable(dvacc)
+
+dvacc[which.min(dvacc$AIC),]
+
+dvacc[which.min(dvacc$BIC),]
+
+dvacc[which.min(dvacc$AICc),]
+```
+
+The model with the lowest AIC, BIC, AICc is ARIMA(0,0,1). So the best model is ARIMA(0,0,1).
+
+
+### Support rate for independent time series
+```{r, message=FALSE,warning=FALSE}
+d=1
+i=1
+dvacc= data.frame()
+ls=matrix(rep(NA,6*8),nrow=8) 
+
+
+for (p in 0:1)
+{
+  for(q in 0:1)
+  {
+    for(d in 0:1)
+    {
+      
+      if(p-1+d+q-1<=8) #usual threshold
+      {
+        
+        model<- Arima(diff(inde_ts),order=c(p,d,q),include.drift=TRUE) 
+        ls[i,]= c(p,d,q,model$aic,model$bic,model$aicc)
+        i=i+1
+        #print(i)
+        
+      }
+      
+    }
+  }
+}
+
+dvacc= as.data.frame(ls)
+names(dvacc)= c("p","d","q","AIC","BIC","AICc")
+
+#dvacc
+knitr::kable(dvacc)
+
+dvacc[which.min(dvacc$AIC),]
+
+dvacc[which.min(dvacc$BIC),]
+
+dvacc[which.min(dvacc$AICc),]
+```
+
+The model with the lowest AIC, BIC, AICc is ARIMA(0,0,1). So the best model is ARIMA(0,0,1).
+
+
+### Support rate for republican time series
+```{r, message=FALSE,warning=FALSE}
+d=1
+i=1
+dvacc= data.frame()
+ls=matrix(rep(NA,6*8),nrow=8) 
+
+
+for (p in 0:1)
+{
+  for(q in 0:1)
+  {
+    for(d in 0:1)
+    {
+      
+      if(p-1+d+q-1<=8) #usual threshold
+      {
+        
+        model<- Arima(diff(rep_ts),order=c(p,d,q),include.drift=TRUE) 
+        ls[i,]= c(p,d,q,model$aic,model$bic,model$aicc)
+        i=i+1
+        #print(i)
+        
+      }
+      
+    }
+  }
+}
+
+dvacc= as.data.frame(ls)
+names(dvacc)= c("p","d","q","AIC","BIC","AICc")
+
+#dvacc
+knitr::kable(dvacc)
+
+dvacc[which.min(dvacc$AIC),]
+
+dvacc[which.min(dvacc$BIC),]
+
+dvacc[which.min(dvacc$AICc),]
+```
+
+The model with the lowest AIC, BIC, AICc is ARIMA(1,0,1). So the best model is ARIMA(1,0,1).
+
+:::
+
+In terms of AIC, BIC and AICc, we always want to choose the lowest values, however, it can happen that the same model won’t have the lowest value for AIC, BIC, and AICc at the same time. In that case we favor the results from AIC as that is a better estimator for autoregressive models. In the next section we can see the results from the AIC-BIC analysis.
+
+**Final Selection:**
+
+- Daily vaccinations time series: p=2, d=1, q=2
+- People vaccinated time series: p=0, d=1, q=3
+- People fully vaccinated time series: p=0, d=1, q=3
+- Newly confirmed case time series: p=0, d=1, q=2
+- Death case time series: p=0, d=1, q=6
+- Inpatient bed time series: p=0, d=1, q=1
+- Inpatient bed used for COVID time series: p=2, d=1, q=1
+- Utilization rate for inpatient bed used for COVID time series: p=2, d=0, q=0
+- Unemployment rate time series: p=1, d=0, q=1
+- Pfizer stock price time series: p=1, d=0, q=3
+- Support rate for democratic time series: p=0, d=0, q=1
+- Support rate for independent time series: p=0, d=0, q=1
+- Support rate for republican time series: p=1, d=0, q=1
+
+
+# 5. Fitting the best model
+
+::: panel-tabset
+### Daily vaccinations time series
+```{r, message=FALSE,warning=FALSE}
+fit_d_vacc_AR <- Arima(diff(d_vacc_ts), order=c(2, 1, 2),include.drift = TRUE) 
+summary(fit_d_vacc_AR)
+```
+The equation for the model is:
+$$x_t = 1.2897x_{t-1} - 0.8476x_{t-2} + w_t - 1.9859w_{t-1} + 0.9999w_{t-2}$$
+
+### People vaccinated time series
+```{r, message=FALSE,warning=FALSE}
+fit_p_vacc_AR <- Arima(diff(p_vacc_ts), order=c(0, 1, 3),include.drift = TRUE) 
+summary(fit_p_vacc_AR)
+```
+The equation for the model is:
+$$x_t = w_t + 0.2969w_{t-1} - 0.2969w_{t-2} - 1.0000w_{t-3} $$
+
+### People fully vaccinated time series
+```{r, message=FALSE,warning=FALSE}
+fit_pf_vacc_AR <- Arima(diff(pf_vacc_ts), order=c(0, 1, 3),include.drift = TRUE) 
+summary(fit_pf_vacc_AR)
+```
+The equation for the model is:
+$$x_t = w_t + 0.2578w_{t-1} - 0.4132w_{t-2} - 0.8446w_{t-3} $$
+
+### Newly confirmed case time series
+```{r, message=FALSE,warning=FALSE}
+fit_case_AR <- Arima(diff(case_ts), order=c(0, 1, 2),include.drift = TRUE) 
+summary(fit_case_AR)
+```
+The equation for the model is:
+$$x_t = w_t - 0.0254w_{t-1} - 0.6635w_{t-2} $$
+
+### Death case time series
+```{r, message=FALSE,warning=FALSE}
+fit_dead_AR <- Arima(diff(dead_ts), order=c(0, 1, 6),include.drift = TRUE) 
+summary(fit_dead_AR)
+```
+The equation for the model is:
+$$x_t = w_t + 0.8533w_{t-1} - 0.3695w_{t-2} - 1.0757w_{t-3} - 1.0900w_{t-4} + 0.0148w_{t-5} + 0.6672w_{t-6} $$
+
+
+### Inpatient bed time series
+```{r, message=FALSE,warning=FALSE}
+fit_hos1_AR <- Arima(diff(hos_ts1), order=c(0, 1, 1),include.drift = TRUE) 
+summary(fit_hos1_AR)
+```
+The equation for the model is:
+$$x_t = w_t - 0.8352w_{t-1} $$
+
+### Inpatient bed used for COVID time series
+```{r, message=FALSE,warning=FALSE}
+fit_hos2_AR <- Arima(diff(hos_ts2), order=c(2, 1, 1),include.drift = TRUE) 
+summary(fit_hos2_AR)
+```
+
+The equation for the model is:
+$$x_t = 0.2460x_{t-1} - 0.4570x_{t-2} + w_t - 1.0000w_{t-1} $$
+
+
+### Utilization rate for inpatient bed used for COVID time series
+```{r, message=FALSE,warning=FALSE}
+fit_hos3_AR <- Arima(diff(hos_ts3), order=c(2, 0, 0),include.drift = TRUE) 
+summary(fit_hos3_AR)
+```
+The equation for the model is:
+$$x_t = 0.305x_{t-1} - 0.4961x_{t-2} $$
+
+
+### Unemployment rate time series
+```{r, message=FALSE,warning=FALSE}
+fit_unemploy_AR <- Arima(diff(unemploy_ts), order=c(1, 0, 1),include.drift = TRUE) 
+summary(fit_unemploy_AR)
+```
+The equation for the model is:
+$$x_t = -0.7636x_{t-1} + w_t + 0.8226w_{t-1} $$
+
+
+### Pfizer stock price time series
+```{r, message=FALSE,warning=FALSE}
+fit_stock_AR <- Arima(diff(stock_ts), order=c(1, 0, 3),include.drift = TRUE) 
+summary(fit_stock_AR)
+```
+
+The equation for the model is:
+$$x_t = 0.5911x_{t-1} + w_t - 1.0179w_{t-1} + 0.4384w_{t-2} - 0.4204w_{t-3} $$
+
+
+### Support rate for democratic time series
+```{r, message=FALSE,warning=FALSE}
+fit_demo_AR <- Arima(diff(demo_ts), order=c(0, 0, 1),include.drift = TRUE) 
+summary(fit_demo_AR)
+```
+
+The equation for the model is:
+$$x_t = w_t - 1.0000w_{t-1} $$
+
+### Support rate for independent time series
+```{r, message=FALSE,warning=FALSE}
+fit_inde_AR <- Arima(diff(inde_ts), order=c(0, 0, 1),include.drift = TRUE) 
+summary(fit_inde_AR)
+```
+The equation for the model is:
+$$x_t = w_t - 1.0000w_{t-1} $$
+
+### Support rate for republican time series
+```{r, message=FALSE,warning=FALSE}
+fit_rep_AR <- Arima(diff(rep_ts), order=c(1, 0, 1),include.drift = TRUE) 
+summary(fit_rep_AR)
+```
+
+The equation for the model is:
+$$x_t = 0.4095x_{t-1} + w_t - 1.0000w_{t-1} $$
+
+:::
+
+
+# 6. Fully Model Diagnostics
+
+::: panel-tabset
+### Daily vaccinations time series
+```{r, message=FALSE,warning=FALSE}
+d_vacc_full <- capture.output(sarima(diff(d_vacc_ts),2, 1, 2))
+cat(d_vacc_full[58:72], d_vacc_full[length(d_vacc_full)], sep = "\n") 
+```
+
+The Standard Residual Plot presents an encouraging picture, exhibiting characteristics of good stationarity with a relatively constant mean and variance. This stability is a positive sign for the model's accuracy. Furthermore, the Autocorrelation Function (ACF) plot reinforces this positive assessment by showing a lack of significant correlation among the residuals, suggesting that the model has effectively captured the underlying patterns in the data, leaving behind what appears to be mere white noise. This is indicative of an exceptionally well-fitted model.
+
+The Quantile-Quantile (Q-Q) Plot also leans towards a favorable evaluation, demonstrating a reasonable approximation of normality, though with some variability. This slight deviation does not detract from the overall model's effectiveness.
+
+However, the Ljung-Box test introduces a layer of complexity with its results. Despite observing variations, the test values exceed the 0.05 threshold (aligned with a 5% significance level), implying a lack of significant autocorrelation. This outcome, coupled with all p-values falling below the 0.05 mark, further validates the model's robustness, suggesting a commendable fit to the observed data.
+
+### People vaccinated time series
+```{r, message=FALSE,warning=FALSE}
+p_vacc_full <- capture.output(sarima(diff(p_vacc_ts),0, 1, 3))
+cat(p_vacc_full[21:34], p_vacc_full[length(p_vacc_full)], sep = "\n") 
+```
+
+The Standard Residual Plot demonstrates commendable stationarity, with a consistently constant mean and variance, suggesting the model’s robustness in capturing the data's central tendencies and spread. The Autocorrelation Function (ACF) plot further reinforces the model's efficacy, showing negligible correlation among residuals and implying that the model has adeptly isolated and left behind only white noise. This is indicative of an exceptionally well-fitted model.
+
+In the realm of normality assessment, the Quantile-Quantile (Q-Q) Plot exhibits a satisfactory alignment with normality, although there is room for improvement in mirroring the ideal normal distribution curve more closely. The Ljung-Box test results introduce a nuanced perspective, with values straddling the 0.05 (5% significance) threshold. This indicates a lack of substantial autocorrelation, underscoring the model's aptitude in fitting the data without overlooking significant patterns.
+
+The analysis of Moving Average parameters reveals a differentiated significance; while the p-values for ma1 and ma2 do not denote statistical significance, falling above the 0.05 threshold, the p-value for ma3 stands out by being less than 0.05. This suggests that while the first two parameters may not contribute significantly to the model, ma3 plays a crucial role, offering insights into the subtleties of the model’s fit and the dynamics captured by this specific parameter.
+
+### People fully vaccinated time series
+```{r, message=FALSE,warning=FALSE}
+pf_vacc_full <- capture.output(sarima(diff(pf_vacc_ts),0, 1, 3))
+cat(pf_vacc_full[20:33], pf_vacc_full[length(pf_vacc_full)], sep = "\n") 
+```
+The Standard Residual Plot presents an encouraging picture of stationarity, characterized by a largely constant mean and variation, indicative of a robust model. The Autocorrelation Function (ACF) plot further bolsters this assessment, displaying an absence of correlation and suggesting that the model has effectively captured the underlying process, leaving only white noise. This is a strong marker of an excellently fitted model. While the Quantile-Quantile (Q-Q) Plot demonstrates a commendable degree of normality, minor deviations are observable, pointing towards an area for potential refinement.
+
+The Ljung-Box test results introduce an element of variability, with values crossing the 0.05 (5% significance) threshold, yet this does not denote significant autocorrelation, reinforcing the model's adequacy. Although the p-values for ma1 and ma2 slightly exceed 0.05, the p-value for ma3 falls below this mark, suggesting that while certain model parameters may edge towards marginal significance, the overall model integrity remains intact, pointing towards a well-specified model.
+
+### Newly confirmed case time series
+```{r, message=FALSE,warning=FALSE}
+case_full <- capture.output(sarima(diff(case_ts),0, 1, 2))
+cat(case_full[20:32], case_full[length(case_full)], sep = "\n") 
+```
+
+The Standard Residual Plot presents a promising depiction of stationarity, characterized by a consistent mean and variation across the board. The Autocorrelation Function (ACF) plot reinforces this positive assessment, showing no discernible correlation and implying that all residual patterns have been effectively captured by the model, leaving behind only white noise. This is a strong indicator of an excellent model fit.
+
+Further analysis through the Quantile-Quantile (Q-Q) Plot suggests a satisfactory alignment with normality, although there is room for slight improvement. The Ljung-Box test results introduce some variability, with values surpassing the 0.05 threshold (indicative of a 5% significance level). This outcome points to the lack of substantial correlation, further affirming the model's aptness.
+
+Regarding the moving average parameters, the p-values associated with ma1 exceed the 0.05 mark, contrasting with ma2's p-value, which falls below this threshold. This differential suggests a nuanced interplay within the model's components, highlighting areas of both strength and potential refinement.
+### Death case time series
+```{r, message=FALSE,warning=FALSE}
+dead_full <- capture.output(sarima(diff(dead_ts),0, 1, 6))
+cat(dead_full[43:59], dead_full[length(dead_full)], sep = "\n") 
+```
+
+The Standard Residual Plot presents a promising outlook, showcasing good signs of stationarity with a consistent mean and variation over time. In the Autocorrelation Function (ACF) plot, the absence of significant correlation further supports the efficacy of our model, suggesting it has successfully captured the underlying patterns in the data, leaving only white noise behind. This is indicative of an excellent model fit. While the Quantile-Quantile (Q-Q) Plot largely aligns with expectations of normality, displaying satisfactory adherence, there is still some variation observed.
+
+Diving deeper into the diagnostic checks, the Ljung-Box test yields intriguing results, with values surpassing the 0.05 threshold (5% significance level). This indicates a lack of significant autocorrelation, reinforcing the model's adequacy. However, an analysis of the Moving Average (MA) parameters reveals a nuanced picture: while the p-values for ma2 and ma5 exceed the 0.05 mark, suggesting these terms may not contribute significantly to the model, the p-values for ma1, ma3, ma4, and ma6 fall below this threshold, indicating their importance in the model's structure. This mixed outcome highlights areas for potential refinement and underscores the model's overall robustness.
+
+### Inpatient bed time series
+```{r, message=FALSE,warning=FALSE}
+hos1_full <- capture.output(sarima(diff(hos_ts1),0, 1, 1))
+cat(hos1_full[22:33], hos1_full[length(hos1_full)], sep = "\n") 
+```
+
+The Standard Residual Plot presents a positive indication of stationarity, characterized by a consistent mean and variance throughout. This suggests a stable model performance over time. The Autocorrelation Function (ACF) plot reinforces this assessment, showing an absence of correlation among residuals and implying that the model has effectively captured the underlying pattern, leaving only white noise behind. This is a hallmark of an excellently fitted model.
+
+Furthermore, the Quantile-Quantile (Q-Q) Plot demonstrates commendable adherence to normality, albeit with some minor deviations. The consistency in the plot underscores the model's reliability in normal distribution assumptions. However, the Ljung-Box test introduces a nuanced perspective, displaying values that surpass the 0.05 threshold (5% significance level). This indicates a lack of significant autocorrelation, reinforcing the model's adeptness at fitting the data effectively, as further evidenced by a p-value below 0.05.
+
+### Inpatient bed used for COVID time series
+```{r, message=FALSE,warning=FALSE}
+hos2_full <- capture.output(sarima(diff(hos_ts2),2, 1, 1))
+cat(hos2_full[31:44], hos2_full[length(hos2_full)], sep = "\n") 
+```
+
+The Standard Residual Plot presents a promising picture, showcasing characteristics of good stationarity with a largely consistent mean and variance across the series. The Autocorrelation Function (ACF) plot further strengthens our confidence in the model's robustness by displaying negligible correlation, which implies that the model has successfully captured the underlying pattern, leaving only white noise behind. This is indicative of an exceptionally well-fitted model. Meanwhile, the Quantile-Quantile (Q-Q) Plot also leans towards demonstrating commendable normality, albeit with some deviations. The Ljung-Box test results introduce a slight variance, displaying values surpassing the 0.05 threshold (at a 5% significance level), which denotes the lack of substantial correlation—another hallmark of a model that is fitting well. Although the p-value for ar1 marginally exceeds 0.05, the p-values for ar2 and ma1 are below this threshold, further underscoring the model's efficacy and the accuracy of its fit.
+
+
+### Utilization rate for inpatient bed used for COVID time series
+```{r, message=FALSE,warning=FALSE}
+hos3_full <- capture.output(sarima(diff(hos_ts3),2, 0, 0))
+cat(hos3_full[20:32], hos3_full[length(hos3_full)], sep = "\n") 
+```
+
+The Standard Residual Plot presents a promising depiction of stationarity, characterized by a largely constant mean and variance, suggesting the model's effectiveness in capturing the data's essence. The Autocorrelation Function (ACF) plot further strengthens this assessment, displaying negligible correlation among residuals and implying that the model residuals resemble white noise—a hallmark of an excellent model fit. Meanwhile, the Quantile-Quantile (Q-Q) Plot offers substantial evidence of normality, albeit with some variability. This is complemented by the outcomes of the Ljung-Box test, which, despite variations, predominantly reports p-values below the 0.05 mark (5% significance level). Such results underscore a lack of significant autocorrelation within the residuals, affirming the model's robustness and precision in fitting the data. 
+
+### Unemployment rate time series
+```{r, message=FALSE,warning=FALSE}
+unemploy_full <- capture.output(sarima(diff(diff(unemploy_ts)),1, 0, 1))
+cat(unemploy_full[135:147], unemploy_full[length(unemploy_full)], sep = "\n") 
+```
+
+After implementing first-order differencing, the unemployment rate time series continued to exhibit non-stationary characteristics, prompting the necessity for a second differencing step to attain stationarity. Post-differencing, the Standard Residual Plot demonstrated commendable stationarity, characterized by a mostly constant mean and variance, indicative of a well-adjusted series. The Autocorrelation Function (ACF) plot, revealing no significant correlations, suggests that the model has effectively captured the underlying patterns within the data, leaving behind what appears to be purely white noise. This is a strong indicator of an excellently fitted model.
+
+Additionally, the Quantile-Quantile (Q-Q) Plot shows a satisfactory alignment with normality, though with some deviations. The results from the Ljung-Box test varied, presenting values surpassing the 0.05 threshold (5% significance level), which points to the absence of significant autocorrelations and underscores the model's adequacy. The analysis of parameter significance revealed that the p-value for the autoregressive term (ar1) exceeded 0.05, suggesting it might not contribute significantly to the model, whereas the moving average term (ma1), with a p-value below 0.05, indicates a meaningful contribution. This nuanced understanding of the model's components further attests to its robustness in capturing the dynamics of the unemployment rate time series.
+
+### Pfizer stock price time series
+```{r, message=FALSE,warning=FALSE}
+stock_full <- capture.output(sarima(diff(stock_ts),1, 0, 3))
+cat(stock_full[57:71], stock_full[length(stock_full)], sep = "\n") 
+```
+
+The Standard Residual Plot presents a promising indication of stationarity, with the mean and variance appearing mostly constant throughout. This uniformity in the residuals suggests a stable model performance over time. Meanwhile, the Autocorrelation Function (ACF) plot reveals an absence of correlation among the residuals, implying that the model has effectively captured the underlying patterns in the data, leaving behind what appears to be pure white noise. Such an outcome is indicative of an excellently fitted model.
+
+On the other hand, the Quantile-Quantile (Q-Q) Plot showcases a decent approximation to normality, although there is some variability. This suggests that while the model's residuals closely follow a normal distribution, there are areas of deviation worth noting.
+
+Moreover, the results from the Ljung-Box test introduce some variability, with values surpassing the 0.05 threshold (5% significance level). This would typically indicate potential correlation; however, in this context, it signifies the absence of significant autocorrelation, further affirming the model's adequacy. Notably, all p-values fall below the 0.05 mark, reinforcing the statistical strength and the well-fitted nature of the model.
+
+### Support rate for democratic time series
+```{r, message=FALSE,warning=FALSE}
+demo_full <- capture.output(sarima(diff(demo_ts),0, 0, 1))
+cat(demo_full[145:156], demo_full[length(demo_full)], sep = "\n") 
+```
+
+The Standard Residual Plot exhibits commendable stationarity, characterized by a consistent mean and variance throughout, indicative of a robust model performance. The Autocorrelation Function (ACF) plot further reinforces this by demonstrating an absence of correlation among residuals, thereby suggesting that the model has effectively captured the underlying data patterns, leaving behind only white noise. This is a hallmark of an excellently fitted model. Meanwhile, the Quantile-Quantile (Q-Q) Plot generally aligns with expectations of normality, although minor deviations are observed, which is typical in practical scenarios. The Ljung-Box test results introduce some variability, with certain values crossing the 0.05 (5% significance) threshold. However, the predominance of p-values below this threshold underscores the model's ability to adequately represent the data without significant autocorrelation among residuals, cementing its status as well-calibrated and fitting.
+
+### Support rate for independent time series
+```{r, message=FALSE,warning=FALSE}
+inde_full <- capture.output(sarima(diff(inde_ts),0, 0, 1))
+cat(inde_full[27:38], inde_full[length(inde_full)], sep = "\n") 
+```
+The Standard Residual Plot presents a commendable depiction of stationarity, with the mean and variance remaining mostly constant throughout, suggesting that the data points fluctuate around a steady level. The Autocorrelation Function (ACF) plot further reinforces the model's efficacy by exhibiting negligible correlation among residuals, indicating that the model has successfully captured the underlying pattern in the data, leaving behind what appears to be mere white noise. This observation underscores the model's robust fit to the data.
+
+In the Quantile-Quantile (Q-Q) Plot, we observe a satisfactory alignment with normality, although there are minor deviations. Such variations are typical and do not significantly detract from the model's overall performance.
+
+However, the results from the Ljung-Box test introduce a layer of complexity, displaying values that occasionally surpass the 0.05 threshold, which typically denotes a 5% significance level. Despite these variations, the predominance of p-values less than 0.05 throughout our analysis provides strong evidence against significant autocorrelation among residuals, further affirming the model's aptitude in capturing the essence of the dataset without overfitting.
+
+Collectively, these diagnostic tools paint a picture of a well-adjusted model, adept at navigating through the intricacies of the data to offer valuable insights, albeit with room for minor improvements as indicated by the Q-Q plot and Ljung-Box test variations.
+
+### Support rate for republican time series
+```{r, message=FALSE,warning=FALSE}
+rep_full <- capture.output(sarima(diff(rep_ts),1, 0, 1))
+cat(rep_full[126:138], rep_full[length(rep_full)], sep = "\n") 
+```
+The Standard Residual Plot presents a promising outlook, showcasing robust stationarity characterized by a largely constant mean and variance, indicative of a well-behaved model. The Autocorrelation Function (ACF) plot further corroborates this by revealing negligible correlation, implying that the residuals amount to white noise and underscoring the model's comprehensive capture of underlying patterns—a hallmark of excellent model fit. Meanwhile, the Quantile-Quantile (Q-Q) Plot demonstrates commendable adherence to normality, albeit with minor deviations. The Ljung-Box test results introduce a nuance, exhibiting values surpassing the 0.05 threshold (at a 5% significance level), thereby negating the presence of substantial autocorrelation and endorsing the model's aptness. Crucially, all observed p-values fall below the 0.05 mark, reinforcing the statistical soundness of our model.
+
+:::
+
+
+# 7. Auto.Arima()
+
+::: panel-tabset
+### Daily vaccinations time series
+```{r, message=FALSE,warning=FALSE}
+auto.arima(diff(d_vacc_ts))
+```
+
+The best model from the step above was ARIMA(2,1,2), while the best model Auto ARIMA gave me is ARIMA(0,0,2) with drift. This discrepancy raises concerns about reliability, as Auto ARIMA tends to overlook instances of significant lag correlation, as evidenced by the ACF/PACF plots. Instead, it prioritizes minimizing AIC/BIC values without considering the full spectrum of model dynamics. This narrow focus risks recommending a model prone to overfitting, lacking in the comprehensive assessment necessary for accurate forecasting.
+
+### People vaccinated time series
+```{r, message=FALSE,warning=FALSE}
+auto.arima(diff(p_vacc_ts))
+```
+
+The best model from the step above was ARIMA(0,1,3), while the best model Auto ARIMA gave me is ARIMA(0,1,1) with drift. This discrepancy raises concerns about reliability, as Auto ARIMA tends to overlook instances of significant lag correlation, as evidenced by the ACF/PACF plots. Instead, it prioritizes minimizing AIC/BIC values without considering the full spectrum of model dynamics. This narrow focus risks recommending a model prone to overfitting, lacking in the comprehensive assessment necessary for accurate forecasting.
+
+### People fully vaccinated time series
+```{r, message=FALSE,warning=FALSE}
+auto.arima(diff(pf_vacc_ts))
+```
+The best model from the step above was ARIMA(0,1,3), while the best model Auto ARIMA gave me is ARIMA(0,1,2) with drift. This discrepancy raises concerns about reliability, as Auto ARIMA tends to overlook instances of significant lag correlation, as evidenced by the ACF/PACF plots. Instead, it prioritizes minimizing AIC/BIC values without considering the full spectrum of model dynamics. This narrow focus risks recommending a model prone to overfitting, lacking in the comprehensive assessment necessary for accurate forecasting.
+
+### Newly confirmed case time series
+```{r, message=FALSE,warning=FALSE}
+auto.arima(diff(case_ts))
+```
+
+The best model from the step above was ARIMA(0,1,2), while the best model Auto ARIMA gave me is ARIMA(0,0,1) with drift. This discrepancy raises concerns about reliability, as Auto ARIMA tends to overlook instances of significant lag correlation, as evidenced by the ACF/PACF plots. Instead, it prioritizes minimizing AIC/BIC values without considering the full spectrum of model dynamics. This narrow focus risks recommending a model prone to overfitting, lacking in the comprehensive assessment necessary for accurate forecasting.
+
+### Death case time series
+```{r, message=FALSE,warning=FALSE}
+auto.arima(diff(dead_ts))
+```
+
+The best model from the step above was ARIMA(0,1,6), while the best model Auto ARIMA gave me is ARIMA(0,1,1) with drift. This discrepancy raises concerns about reliability, as Auto ARIMA tends to overlook instances of significant lag correlation, as evidenced by the ACF/PACF plots. Instead, it prioritizes minimizing AIC/BIC values without considering the full spectrum of model dynamics. This narrow focus risks recommending a model prone to overfitting, lacking in the comprehensive assessment necessary for accurate forecasting.
+
+### Inpatient bed time series
+```{r, message=FALSE,warning=FALSE}
+auto.arima(diff(hos_ts1))
+```
+
+The best model from the step above and from the Auto ARIMA was all ARIMA(0,1,1), which means it is the best model.
+
+### Inpatient bed used for COVID time series
+```{r, message=FALSE,warning=FALSE}
+auto.arima(diff(hos_ts2))
+```
+The best model from the step above was ARIMA(2,1,1), while the best model Auto ARIMA gave me is ARIMA(0,0,3) with drift. This discrepancy raises concerns about reliability, as Auto ARIMA tends to overlook instances of significant lag correlation, as evidenced by the ACF/PACF plots. Instead, it prioritizes minimizing AIC/BIC values without considering the full spectrum of model dynamics. This narrow focus risks recommending a model prone to overfitting, lacking in the comprehensive assessment necessary for accurate forecasting.
+
+### Utilization rate for inpatient bed used for COVID time series
+```{r, message=FALSE,warning=FALSE}
+auto.arima(diff(hos_ts3))
+```
+
+The best model from the step above was ARIMA(2,0,0), while the best model Auto ARIMA gave me is ARIMA(0,0,3) with drift. This discrepancy raises concerns about reliability, as Auto ARIMA tends to overlook instances of significant lag correlation, as evidenced by the ACF/PACF plots. Instead, it prioritizes minimizing AIC/BIC values without considering the full spectrum of model dynamics. This narrow focus risks recommending a model prone to overfitting, lacking in the comprehensive assessment necessary for accurate forecasting.
+
+### Unemployment rate time series
+```{r, message=FALSE,warning=FALSE}
+auto.arima(diff(diff(unemploy_ts)))
+```
+
+The best model from the step above was ARIMA(1,0,1), while the best model Auto ARIMA gave me is ARIMA(0,0,0) with drift. This discrepancy raises concerns about reliability, as Auto ARIMA tends to overlook instances of significant lag correlation, as evidenced by the ACF/PACF plots. Instead, it prioritizes minimizing AIC/BIC values without considering the full spectrum of model dynamics. This narrow focus risks recommending a model prone to overfitting, lacking in the comprehensive assessment necessary for accurate forecasting.
+
+### Pfizer stock price time series
+```{r, message=FALSE,warning=FALSE}
+auto.arima(diff(stock_ts))
+```
+
+The best model from the step above was ARIMA(1,0,3), while the best model Auto ARIMA gave me is ARIMA(2,0,0) with drift. This discrepancy raises concerns about reliability, as Auto ARIMA tends to overlook instances of significant lag correlation, as evidenced by the ACF/PACF plots. Instead, it prioritizes minimizing AIC/BIC values without considering the full spectrum of model dynamics. This narrow focus risks recommending a model prone to overfitting, lacking in the comprehensive assessment necessary for accurate forecasting.
+
+### Support rate for democratic time series
+```{r, message=FALSE,warning=FALSE}
+auto.arima(diff(demo_ts))
+```
+
+The best model from the step above and from the Auto ARIMA was all ARIMA(0,0,1), which means it is the best model.
+
+### Support rate for independent time series
+```{r, message=FALSE,warning=FALSE}
+auto.arima(diff(inde_ts))
+```
+
+The best model from the step above was ARIMA(0,0,1), while the best model Auto ARIMA gave me is ARIMA(1,0,0) with drift. This discrepancy raises concerns about reliability, as Auto ARIMA tends to overlook instances of significant lag correlation, as evidenced by the ACF/PACF plots. Instead, it prioritizes minimizing AIC/BIC values without considering the full spectrum of model dynamics. This narrow focus risks recommending a model prone to overfitting, lacking in the comprehensive assessment necessary for accurate forecasting.
+
+### Support rate for republican time series
+```{r, message=FALSE,warning=FALSE}
+auto.arima(diff(rep_ts))
+```
+The best model from the step above was ARIMA(1,0,1), while the best model Auto ARIMA gave me is ARIMA(0,0,1) with drift. This discrepancy raises concerns about reliability, as Auto ARIMA tends to overlook instances of significant lag correlation, as evidenced by the ACF/PACF plots. Instead, it prioritizes minimizing AIC/BIC values without considering the full spectrum of model dynamics. This narrow focus risks recommending a model prone to overfitting, lacking in the comprehensive assessment necessary for accurate forecasting.
+
+:::
+
+Auto ARIMA may not always serve as the most dependable model for forecasting, for several reasons. Firstly, its reliance on predefined criteria for model selection can sometimes overlook subtle nuances within the data, which might be crucial for accurate predictions. Additionally, the automated nature of Auto ARIMA increases the risk of overfitting or selecting a model that is less than optimal. Thus, although Auto ARIMA is an incredibly potent analytical tool, it is essential to approach its projected results with caution and not rely on them unquestioningly.
+
+
+# 8. Forecasting
+
+::: panel-tabset
+### Daily vaccinations time series
+```{r, message=FALSE,warning=FALSE}
+pred_techmu=forecast(fit_d_vacc_AR,50)
+autoplot(pred_techmu) + theme_bw() 
+```
+
+
+### People vaccinated time series
+```{r, message=FALSE,warning=FALSE}
+pred_techmu=forecast(fit_p_vacc_AR,50)
+autoplot(pred_techmu) + theme_bw() 
+```
+
+
+### People fully vaccinated time series
+```{r, message=FALSE,warning=FALSE}
+pred_techmu=forecast(fit_pf_vacc_AR,50)
+autoplot(pred_techmu) + theme_bw() 
+```
+
+
+### Newly confirmed case time series
+```{r, message=FALSE,warning=FALSE}
+pred_techmu=forecast(fit_case_AR,50)
+autoplot(pred_techmu) + theme_bw() 
+```
+
+
+### Death case time series
+```{r, message=FALSE,warning=FALSE}
+pred_techmu=forecast(fit_dead_AR,50)
+autoplot(pred_techmu) + theme_bw() 
+```
+
+
+### Inpatient bed time series
+```{r, message=FALSE,warning=FALSE}
+pred_techmu=forecast(fit_hos1_AR,50)
+autoplot(pred_techmu) + theme_bw() 
+```
+
+
+### Inpatient bed used for COVID time series
+```{r, message=FALSE,warning=FALSE}
+pred_techmu=forecast(fit_hos2_AR,50)
+autoplot(pred_techmu) + theme_bw() 
+```
+
+
+### Utilization rate for inpatient bed used for COVID time series
+```{r, message=FALSE,warning=FALSE}
+pred_techmu=forecast(fit_hos3_AR,50)
+autoplot(pred_techmu) + theme_bw() 
+```
+
+
+### Unemployment rate time series
+```{r, message=FALSE,warning=FALSE}
+pred_techmu=forecast(fit_unemploy_AR,50)
+autoplot(pred_techmu) + theme_bw() 
+```
+
+
+### Pfizer stock price time series
+```{r, message=FALSE,warning=FALSE}
+pred_techmu=forecast(fit_stock_AR,50)
+autoplot(pred_techmu) + theme_bw() 
+```
+
+
+### Support rate for democratic time series
+```{r, message=FALSE,warning=FALSE}
+pred_techmu=forecast(fit_demo_AR,50)
+autoplot(pred_techmu) + theme_bw() 
+```
+
+
+### Support rate for independent time series
+```{r, message=FALSE,warning=FALSE}
+pred_techmu=forecast(fit_inde_AR,50)
+autoplot(pred_techmu) + theme_bw() 
+```
+
+
+### Support rate for republican time series
+```{r, message=FALSE,warning=FALSE}
+pred_techmu=forecast(fit_rep_AR,50)
+autoplot(pred_techmu) + theme_bw() 
+```
+
+:::
+
+In the presented forecast graphs, the predictive trajectory is depicted by a blue line, surrounded by a confidence band in two shades of purple. The darker purple represents the 95% confidence interval, indicating a high level of certainty, while the lighter purple corresponds to the 5% interval, denoting lower confidence levels. Notably, as the forecast extends into the future, the confidence band expands, signifying a widening interval. This expansion reflects an increase in forecast uncertainty—the further we project into the future, the more variable and less certain the predictions become. This pattern is consistently observed across all plots, underscoring the inherent challenge of forecasting over extended periods.
+
+# 9. ARIMA vs. Benchmarks
+
+::: panel-tabset
+### Daily vaccinations time series
+```{r, message=FALSE,warning=FALSE}
+fit_techmu_bench <- Arima(d_vacc_ts, order=c(2, 1, 2),include.drift = FALSE) 
+autoplot(d_vacc_ts) +
+  autolayer(meanf(d_vacc_ts, h=10),
+            series="Mean", PI=FALSE) +
+  autolayer(naive(d_vacc_ts, h=10),
+            series="Naïve", PI=FALSE)+
+  autolayer(rwf(d_vacc_ts, drift=TRUE, h=10),
+            series="Drift", PI=FALSE)+
+   autolayer(forecast(d_vacc_ts ,10), 
+            series="Arima",PI=FALSE) + theme_bw() + ggtitle("Benchmark Methods Comparison with Daily Vaccinations")+
+  guides(colour=guide_legend(title="Forecast")) 
+```
+The plot showcases a comparison of different forecasting methods for daily vaccination numbers. The black line represents the actual historical data for daily vaccinations, displaying a sharp peak in early 2021 and another in early 2022, followed by a decline. The forecasts from ARIMA, Drift, Mean, and Naïve models are depicted as flat lines beyond the historical data, indicating their prediction for future values. The ARIMA forecast appears slightly above zero, suggesting minimal change in future vaccination numbers, which could imply a matured vaccination campaign. Drift and Mean models predict a very slight downward and upward trend, respectively, while the Naïve model, often used as a baseline comparison, suggests no change, simply carrying the last observed data point forward. The stability in these predictions may reflect an anticipation that vaccination rates will level off, having addressed the immediate demand.
+
+### People vaccinated time series
+```{r, message=FALSE,warning=FALSE}
+fit_techmu_bench <- Arima(p_vacc_ts, order=c(0, 1, 3),include.drift = FALSE) 
+autoplot(p_vacc_ts) +
+  autolayer(meanf(p_vacc_ts, h=10),
+            series="Mean", PI=FALSE) +
+  autolayer(naive(p_vacc_ts, h=10),
+            series="Naïve", PI=FALSE)+
+  autolayer(rwf(p_vacc_ts, drift=TRUE, h=10),
+            series="Drift", PI=FALSE)+
+   autolayer(forecast(p_vacc_ts ,10), 
+            series="Arima",PI=FALSE) + theme_bw() + ggtitle("Benchmark Methods Comparison with People Vaccinated")+
+  guides(colour=guide_legend(title="Forecast")) 
+```
+
+The plot is a visual representation of the comparison between different forecasting methods for the number of people vaccinated over time. The historical data is shown by the black line, indicating the growth trend of vaccinations until the current period. The projections made by the ARIMA, Drift, Mean, and Naïve methods are depicted as flat lines extending from the last historical point into the future (2023 and beyond).
+
+The ARIMA model predicts a slight increase in vaccination numbers, while the Drift method suggests a more optimistic steady rise. The Mean model forecasts a constant rate, and the Naïve method, which carries the last observed value forward, also indicates no change. It is clear that these models have varying degrees of optimism regarding the future trend of vaccination numbers, with ARIMA and Drift expecting growth, while Mean and Naïve forecasts imply stabilization.
+
+### People fully vaccinated time series
+```{r, message=FALSE,warning=FALSE}
+fit_techmu_bench <- Arima(pf_vacc_ts, order=c(0, 1, 3),include.drift = FALSE) 
+autoplot(pf_vacc_ts) +
+  autolayer(meanf(pf_vacc_ts, h=10),
+            series="Mean", PI=FALSE) +
+  autolayer(naive(pf_vacc_ts, h=10),
+            series="Naïve", PI=FALSE)+
+  autolayer(rwf(pf_vacc_ts, drift=TRUE, h=10),
+            series="Drift", PI=FALSE)+
+   autolayer(forecast(pf_vacc_ts ,10), 
+            series="Arima",PI=FALSE) + theme_bw() + ggtitle("Benchmark Methods Comparison with People Fully Vaccinated")+
+  guides(colour=guide_legend(title="Forecast")) 
+```
+This plot compares the forecasts of fully vaccinated individuals using several time series models. The black line represents the actual number of people fully vaccinated over time, showing an initial steep increase that plateaus as it moves into 2022. Predictions from the ARIMA, Drift, Mean, and Naïve models extend from the last data point. The ARIMA model projects a continued but slowing increase in fully vaccinated people, while the Drift model shows a steeper increase, suggesting higher future vaccination rates. The Mean model predicts a flat trend, indicating no significant change moving forward, and the Naïve model simply extends the last known value into the future, suggesting a static forecast. The models reflect different assumptions about the continuation of vaccination efforts and possible changes in public health policy or vaccine uptake.
+
+### Newly confirmed case time series
+```{r, message=FALSE,warning=FALSE}
+fit_techmu_bench <- Arima(case_ts, order=c(0, 1, 2),include.drift = FALSE) 
+autoplot(case_ts) +
+  autolayer(meanf(case_ts, h=10),
+            series="Mean", PI=FALSE) +
+  autolayer(naive(case_ts, h=10),
+            series="Naïve", PI=FALSE)+
+  autolayer(rwf(case_ts, drift=TRUE, h=10),
+            series="Drift", PI=FALSE)+
+   autolayer(forecast(case_ts ,10), 
+            series="Arima",PI=FALSE) + theme_bw() + ggtitle("Benchmark Methods Comparison with Newly Confirmed Case")+
+  guides(colour=guide_legend(title="Forecast")) 
+```
+The graph presents a forecast comparison for newly confirmed COVID-19 cases using various time series models. The historical data, illustrated by the black line, shows an increasing trend through 2020 and 2021, with a plateau into 2022. The forecast models—ARIMA, Drift, Mean, and Naïve—are indicated by different colored lines beyond the last historical data point. The ARIMA model predicts a steady upward trend, suggesting an increase in cases. In contrast, the Drift model shows a flat forecast, indicating little change. The Mean model also forecasts a constant trend, and the Naïve model projects a continuation of the last observed value. This graphical representation provides an outlook on potential future case trends based on different modeling approaches.
+
+### Death case time series
+```{r, message=FALSE,warning=FALSE}
+fit_techmu_bench <- Arima(dead_ts, order=c(0, 1, 6),include.drift = FALSE) 
+autoplot(dead_ts) +
+  autolayer(meanf(dead_ts, h=10),
+            series="Mean", PI=FALSE) +
+  autolayer(naive(dead_ts, h=10),
+            series="Naïve", PI=FALSE)+
+  autolayer(rwf(dead_ts, drift=TRUE, h=10),
+            series="Drift", PI=FALSE)+
+   autolayer(forecast(dead_ts ,10), 
+            series="Arima",PI=FALSE) + theme_bw() + ggtitle("Benchmark Methods Comparison with Death Case")+
+  guides(colour=guide_legend(title="Forecast")) 
+```
+
+The plot illustrates a forecast comparison for COVID-19 death cases using various time series models. The black line represents the historical number of deaths, increasing initially and then plateauing into 2022. Forecasts by ARIMA, Drift, Mean, and Naïve models are shown as colored lines projecting beyond the last data point. The ARIMA model predicts an upward trend, possibly anticipating a rise in death cases. The Drift model's forecast remains constant, while the Mean model suggests slight growth. The Naïve model extends the last value into the future, implying no immediate change. This analysis might help in understanding and preparing for potential future scenarios in public health planning.
+
+### Inpatient bed time series
+```{r, message=FALSE,warning=FALSE}
+fit_techmu_bench <- Arima(hos_ts1, order=c(0, 1, 1),include.drift = FALSE) 
+autoplot(hos_ts1) +
+  autolayer(meanf(hos_ts1, h=10),
+            series="Mean", PI=FALSE) +
+  autolayer(naive(hos_ts1, h=10),
+            series="Naïve", PI=FALSE)+
+  autolayer(rwf(hos_ts1, drift=TRUE, h=10),
+            series="Drift", PI=FALSE)+
+   autolayer(forecast(hos_ts1 ,10), 
+            series="Arima",PI=FALSE) + theme_bw() + ggtitle("Benchmark Methods Comparison with Inpatient Bed Number")+
+  guides(colour=guide_legend(title="Forecast")) 
+```
+
+The plot compares different time series forecasting methods for the number of inpatient hospital beds occupied over time. The black line indicates the actual historical data, which shows a rapid increase at the beginning, stabilizing as it moves into the latter part of 2021 and remains relatively flat into 2022. Forecasts by the ARIMA, Drift, Mean, and Naïve methods are represented as colored lines extending from the end of the actual data into future years. The ARIMA model shows an optimistic continuous increase in bed occupancy, while the Drift model forecasts a flat trend. The Mean model predicts a very slight increase, suggesting stability, and the Naïve model extends the last known value, implying no expected change. Each model's prediction reflects different assumptions and interpretations of the historical data's underlying patterns.
+
+### Inpatient bed used for COVID time series
+```{r, message=FALSE,warning=FALSE}
+fit_techmu_bench <- Arima(hos_ts2, order=c(2, 1, 1),include.drift = FALSE) 
+autoplot(hos_ts2) +
+  autolayer(meanf(hos_ts2, h=10),
+            series="Mean", PI=FALSE) +
+  autolayer(naive(hos_ts2, h=10),
+            series="Naïve", PI=FALSE)+
+  autolayer(rwf(hos_ts2, drift=TRUE, h=10),
+            series="Drift", PI=FALSE)+
+   autolayer(forecast(hos_ts2 ,10), 
+            series="Arima",PI=FALSE) + theme_bw() + ggtitle("Benchmark Methods Comparison with Inpatient Bed Number Used for COVID")+
+  guides(colour=guide_legend(title="Forecast")) 
+```
+
+The plot illustrates a forecast comparison using different models for the number of inpatient hospital beds utilized for COVID-19 patients. The actual historical data, represented by the black line, shows several spikes, indicating surges in hospital bed usage at different times, presumably correlating with waves of the pandemic. Moving into the future, forecasts from ARIMA, Drift, Mean, and Naïve methods show diverging trends. ARIMA expects an increase, while Drift indicates a flat future trend. Mean and Naïve models suggest a slight increase and no change, respectively. The models likely reflect different assumptions about pandemic progression and healthcare needs.
+
+### Utilization rate for inpatient bed used for COVID time series
+```{r, message=FALSE,warning=FALSE}
+fit_techmu_bench <- Arima(hos_ts3, order=c(2, 0, 0),include.drift = FALSE) 
+autoplot(hos_ts3) +
+  autolayer(meanf(hos_ts3, h=10),
+            series="Mean", PI=FALSE) +
+  autolayer(naive(hos_ts3, h=10),
+            series="Naïve", PI=FALSE)+
+  autolayer(rwf(hos_ts3, drift=TRUE, h=10),
+            series="Drift", PI=FALSE)+
+   autolayer(forecast(hos_ts3 ,10), 
+            series="Arima",PI=FALSE) + theme_bw() + ggtitle("Benchmark Methods Comparison with Utilization Rate for Inpatient Bed Used for COVID")+
+  guides(colour=guide_legend(title="Forecast")) 
+```
+This plot appears to be a time series forecast comparing different methods (ARIMA, Drift, Mean, Naive) for predicting the utilization rate of inpatient beds used for COVID. The historical data shows significant fluctuations, which could correspond to various waves or surges in COVID cases. The forecast section shows that while some methods predict stability or a decline, the ARIMA model suggests a potential increase in bed utilization, which might anticipate a rise in cases or a change in hospitalization rates. The other methods seem to predict a relatively flat or stable future trend.
+
+
+### Unemployment rate time series
+```{r, message=FALSE,warning=FALSE}
+fit_techmu_bench <- Arima(unemploy_ts, order=c(1, 0, 1),include.drift = FALSE) 
+autoplot(unemploy_ts) +
+  autolayer(meanf(unemploy_ts, h=10),
+            series="Mean", PI=FALSE) +
+  autolayer(naive(unemploy_ts, h=10),
+            series="Naïve", PI=FALSE)+
+  autolayer(rwf(unemploy_ts, drift=TRUE, h=10),
+            series="Drift", PI=FALSE)+
+   autolayer(forecast(unemploy_ts ,10), 
+            series="Arima",PI=FALSE) + theme_bw() + ggtitle("Benchmark Methods Comparison with Unemployment Rate")+
+  guides(colour=guide_legend(title="Forecast")) 
+```
+
+This plot appears to be a graphical representation comparing different forecasting methods for unemployment rates over time. The black line represents historical data on unemployment rates. The colored lines, which represent forecasts from various methods such as ARIMA, Drift, Mean, and Naïve, start from where the historical data ends. The plot shows the unemployment rate sharply increasing in 2020, likely due to the COVID-19 pandemic, then gradually decreasing over time, indicating recovery. The ARIMA model forecast seems to indicate a slight increase in unemployment in the future, while the Drift, Mean, and Naïve forecasts suggest a stable or decreasing trend.
+
+### Pfizer stock price time series
+```{r, message=FALSE,warning=FALSE}
+fit_techmu_bench <- Arima(stock_ts, order=c(1, 0, 3),include.drift = FALSE) 
+autoplot(stock_ts) +
+  autolayer(meanf(stock_ts, h=10),
+            series="Mean", PI=FALSE) +
+  autolayer(naive(stock_ts, h=10),
+            series="Naïve", PI=FALSE)+
+  autolayer(rwf(stock_ts, drift=TRUE, h=10),
+            series="Drift", PI=FALSE)+
+   autolayer(forecast(stock_ts ,10), 
+            series="Arima",PI=FALSE) + theme_bw() + ggtitle("Benchmark Methods Comparison with Pfizer Stock Price")+
+  guides(colour=guide_legend(title="Forecast")) 
+```
+
+The plot shows the historical stock price for Pfizer, represented by the black line, along with forecasts from different models: ARIMA, Drift, Mean, and Naïve. The colored horizontal lines indicate the forecasted stock price level according to each model from the present to 2024. The ARIMA model forecasts a slight decline, while the Drift and Mean models predict a stabilization of the stock price. The Naïve forecast suggests a more significant decline. This visualization is used to compare how different statistical methods anticipate the stock price trend based on historical data.
+
+### Support rate for democratic time series
+```{r, message=FALSE,warning=FALSE}
+fit_techmu_bench <- Arima(demo_ts, order=c(0, 0, 1),include.drift = FALSE) 
+autoplot(demo_ts) +
+  autolayer(meanf(demo_ts, h=10),
+            series="Mean", PI=FALSE) +
+  autolayer(naive(demo_ts, h=10),
+            series="Naïve", PI=FALSE)+
+  autolayer(rwf(demo_ts, drift=TRUE, h=10),
+            series="Drift", PI=FALSE)+
+   autolayer(forecast(demo_ts ,10), 
+            series="Arima",PI=FALSE) + theme_bw() + ggtitle("Benchmark Methods Comparison with Support Rate for Democratic")+
+  guides(colour=guide_legend(title="Forecast")) 
+```
+
+The uploaded plot appears to compare the performance of various forecasting methods—Arima, Drift, Mean, and Naïve—on a particular dataset over time. The solid black line likely represents actual historical data, and the horizontal colored lines project future predictions according to each method. These predictions might illustrate expected trends or levels for a variable such as support rates for a political party, stock prices, healthcare metrics, or economic indicators. The Arima forecast line suggests changes over time, while Drift, Mean, and Naïve methods seem to predict a constant future value, likely based on different statistical assumptions or calculations. This visualization helps to evaluate the different approaches to forecasting and their potential accuracy in predicting future trends or values.
+
+### Support rate for independent time series
+```{r, message=FALSE,warning=FALSE}
+fit_techmu_bench <- Arima(inde_ts, order=c(0, 0, 1),include.drift = FALSE) 
+autoplot(inde_ts) +
+  autolayer(meanf(inde_ts, h=10),
+            series="Mean", PI=FALSE) +
+  autolayer(naive(inde_ts, h=10),
+            series="Naïve", PI=FALSE)+
+  autolayer(rwf(inde_ts, drift=TRUE, h=10),
+            series="Drift", PI=FALSE)+
+   autolayer(forecast(inde_ts ,10), 
+            series="Arima",PI=FALSE) + theme_bw() + ggtitle("Benchmark Methods Comparison with Support Rate for Independent")+
+  guides(colour=guide_legend(title="Forecast")) 
+```
+The plot you've shared appears to depict a time series analysis using various benchmark methods such as ARIMA, Drift, Mean, and Naïve to forecast future values related to a specific metric. The actual historical data is shown by the solid black line, which seems to have a particular trend or pattern. The forecast lines for each method start from where the actual data ends and project into the future, displaying the predicted values according to each method. 
+
+ARIMA is showing a distinct upward or downward trend, suggesting a specific model-based prediction. The Drift method appears to forecast a linear trend that picks up from the last observed point. The Mean forecast suggests that future values will hover around the historical average, while the Naïve method seems to project that future values will remain constant at the last observed value. Each method offers a different perspective on future expectations based on past data.
+
+### Support rate for republican time series
+```{r, message=FALSE,warning=FALSE}
+fit_techmu_bench <- Arima(rep_ts, order=c(1, 0, 1),include.drift = FALSE) 
+autoplot(rep_ts) +
+  autolayer(meanf(rep_ts, h=10),
+            series="Mean", PI=FALSE) +
+  autolayer(naive(rep_ts, h=10),
+            series="Naïve", PI=FALSE)+
+  autolayer(rwf(rep_ts, drift=TRUE, h=10),
+            series="Drift", PI=FALSE)+
+   autolayer(forecast(rep_ts ,10), 
+            series="Arima",PI=FALSE) + theme_bw() + ggtitle("Benchmark Methods Comparison with Support Rate for Republican")+
+  guides(colour=guide_legend(title="Forecast")) 
+```
+It seems there was an error processing the image you've uploaded. Could you provide a description of what the image contains or try uploading it again? If it's a plot or a graph, details about the axes, any legends or keys, and the general trend or data points shown would be helpful for me to give an explanation.
+
+:::
+
+# 10. SARIMA ACF & PACF Plots
+
+::: panel-tabset
+### Daily vaccinations time series
+```{r, message=FALSE,warning=FALSE}
+d_vacc_ts %>% diff(lag=12) %>% ggtsdisplay()
+```
+
+You can observe from the seasonal differenced dataset that the time series plot looks significantly different. The seasonal cycles are removed, revealing the true trend of the data. Looking at the ACF and PACF plots, we can determine that:
+
+P: 1,2
+D: 1
+Q: 1
+
+### People vaccinated time series
+```{r, message=FALSE,warning=FALSE}
+p_vacc_ts %>% diff(lag=12) %>% ggtsdisplay()
+```
+
+You can observe that there is no obvious seasonal difference in the dataset. The seasonal cycles are removed, revealing the true trend of the data. Looking at the ACF and PACF plots, we can determine that:
+
+P: 1
+D: 1,2
+Q: 1
+
+
+### People fully vaccinated time series
+```{r, message=FALSE,warning=FALSE}
+pf_vacc_ts %>% diff(lag=12) %>% ggtsdisplay()
+```
+
+You can observe that there is no obvious seasonal difference in the dataset. The seasonal cycles are removed, revealing the true trend of the data. Looking at the ACF and PACF plots, we can determine that:
+
+P: 1
+D: 1,2
+Q: 1
+
+### Newly confirmed case time series
+```{r, message=FALSE,warning=FALSE}
+case_ts %>% diff(lag=12) %>% ggtsdisplay()
+```
+
+You can observe that there is no obvious seasonal difference in the dataset. The seasonal cycles are removed, revealing the true trend of the data. Looking at the ACF and PACF plots, we can determine that:
+
+P: 1
+D: 1,2,3,4
+Q: 1
+
+### Death case time series
+```{r, message=FALSE,warning=FALSE}
+dead_ts %>% diff(lag=12) %>% ggtsdisplay()
+```
+
+You can observe that there is no obvious seasonal difference in the dataset. The seasonal cycles are removed, revealing the true trend of the data. Looking at the ACF and PACF plots, we can determine that:
+
+P: 1
+D: 1,2,3,4,5
+Q: 1
+
+### Inpatient bed time series
+```{r, message=FALSE,warning=FALSE}
+hos_ts1 %>% diff(lag=12) %>% ggtsdisplay()
+```
+
+You can observe that there is no obvious seasonal difference in the dataset. The seasonal cycles are removed, revealing the true trend of the data. Looking at the ACF and PACF plots, we can determine that:
+
+P: 1
+D: 1,2
+Q: 1
+
+### Inpatient bed used for COVID time series
+```{r, message=FALSE,warning=FALSE}
+hos_ts2 %>% diff(lag=12) %>% ggtsdisplay()
+```
+
+You can observe from the seasonal differenced dataset that the time series plot looks significantly different. The seasonal cycles are removed, revealing the true trend of the data. Looking at the ACF and PACF plots, we can determine that:
+
+P: 1
+D: 1
+Q: 1
+
+### Utilization rate for inpatient bed used for COVID time series
+```{r, message=FALSE,warning=FALSE}
+hos_ts3 %>% diff(lag=12) %>% ggtsdisplay()
+```
+You can observe from the seasonal differenced dataset that the time series plot looks significantly different. The seasonal cycles are removed, revealing the true trend of the data. Looking at the ACF and PACF plots, we can determine that:
+
+P: 1,2
+D: 1
+Q: 1
+
+
+### Unemployment rate time series
+```{r, message=FALSE,warning=FALSE}
+unemploy_ts %>% diff(lag=12) %>% ggtsdisplay()
+```
+
+You can observe that there is no obvious seasonal difference in the dataset. The seasonal cycles are removed, revealing the true trend of the data. Looking at the ACF and PACF plots, we can determine that:
+
+P: 1
+D: 1
+Q: 1
+
+
+### Pfizer stock price time series
+```{r, message=FALSE,warning=FALSE}
+stock_ts %>% diff(lag=12) %>% ggtsdisplay()
+```
+You can observe from the seasonal differenced dataset that the time series plot looks significantly different. The seasonal cycles are removed, revealing the true trend of the data. Looking at the ACF and PACF plots, we can determine that:
+
+P: 1
+D: 1,2
+Q: 1
+
+
+### Support rate for democratic time series
+```{r, message=FALSE,warning=FALSE}
+demo_ts %>% diff(lag=12) %>% ggtsdisplay()
+```
+
+You can observe from the seasonal differenced dataset that the time series plot looks significantly different. The seasonal cycles are removed, revealing the true trend of the data. Looking at the ACF and PACF plots, we can determine that:
+
+P: 1
+D: 1
+Q: 1
+
+### Support rate for independent time series
+```{r, message=FALSE,warning=FALSE}
+inde_ts %>% diff(lag=12) %>% ggtsdisplay()
+```
+
+You can observe from the seasonal differenced dataset that the time series plot looks significantly different. The seasonal cycles are removed, revealing the true trend of the data. Looking at the ACF and PACF plots, we can determine that:
+
+P: 1
+D: 1
+Q: 1
+
+### Support rate for republican time series
+```{r, message=FALSE,warning=FALSE}
+rep_ts %>% diff(lag=12) %>% ggtsdisplay()
+```
+
+You can observe from the seasonal differenced dataset that the time series plot looks significantly different. The seasonal cycles are removed, revealing the true trend of the data. Looking at the ACF and PACF plots, we can determine that:
+
+P: 1
+D: 1
+Q: 1
+
+:::
+
+
+# 11. SARIMA(p,d,q)
+
+::: panel-tabset
+### Daily vaccinations time series
+
+I will run different combinations of SARIMA with the values q = 1,2,3 d = 1,2 p = 1,2,5 P = 1,2 Q = 1 D = 1
+
+```{r, message=FALSE,warning=FALSE}
+#write a funtion
+SARIMA.c=function(p1,p2,q1,q2,P1,P2,Q1,Q2,data){
+  
+  #K=(p2+1)*(q2+1)*(P2+1)*(Q2+1)
+  
+  temp=c()
+  d=1
+  D=1
+  s=12
+  
+  i=1
+  temp= data.frame()
+  ls=matrix(rep(NA,9*30),nrow=30)
+  
+  
+  for (p in p1:p2)
+  {
+    for(q in q1:q2)
+    {
+      for(P in P1:P2)
+      {
+        for(Q in Q1:Q2)
+        {
+          if(p+d+q+P+D+Q<=9)
+          {
+            
+            model<- Arima(data,order=c(p-1,d,q-1),seasonal=c(P-1,D,Q-1))
+            ls[i,]= c(p-1,d,q-1,P-1,D,Q-1,model$aic,model$bic,model$aicc)
+            i=i+1
+            #print(i)
+            
+          }
+          
+        }
+      }
+    }
+    
+  }
+  
+  
+  temp= as.data.frame(ls)
+  names(temp)= c("p","d","q","P","D","Q","AIC","BIC","AICc")
+  
+  temp
+  
+}
+
+output=SARIMA.c(p1=1,p2=5,q1=1,q2=3,P1=1,P2=2,Q1=1,Q2=2,data=diff(diff(d_vacc_ts)))
+
+
+knitr::kable(output)
+
+output[which.min(output$AIC),]
+
+output[which.min(output$BIC),]
+
+output[which.min(output$AICc),]
+```
+
+The model with the lowest AIC, BIC amd AICc is ARIMA(0,1,1)x(0,1,0)12.
+
+### People vaccinated time series
+```{r, message=FALSE,warning=FALSE}
+output=SARIMA.c(p1=1,p2=4,q1=1,q2=4,P1=1,P2=2,Q1=1,Q2=2,data=p_vacc_ts)
+
+knitr::kable(output)
+
+output[which.min(output$AIC),]
+
+output[which.min(output$BIC),]
+
+output[which.min(output$AICc),]
+```
+
+The model with the lowest AIC, BIC amd AICc is ARIMA(1,1,2)x(0,1,0)12.
+
+### People fully vaccinated time series
+```{r, message=FALSE,warning=FALSE}
+output=SARIMA.c(p1=1,p2=4,q1=1,q2=4,P1=1,P2=2,Q1=1,Q2=2,data=pf_vacc_ts)
+
+knitr::kable(output)
+
+output[which.min(output$AIC),]
+
+output[which.min(output$BIC),]
+
+output[which.min(output$AICc),]
+```
+
+The model with the lowest AIC, BIC amd AICc is ARIMA(2,1,0)x(0,1,0)12.
+
+### Newly confirmed case time series
+
+Due to the presence of non-stationary seasonality in this time series data, we have opted to discontinue its use. Non-stationary seasonality implies that the patterns and trends within the data exhibit variations over time, without displaying a consistent and predictable behavior. As a result, attempting to model or analyze such data may lead to unreliable or inaccurate outcomes. Hence, to ensure the robustness and validity of our analyses, we have decided to cease utilizing this particular time series.
+
+### Death case time series
+```{r, message=FALSE,warning=FALSE}
+output=SARIMA.c(p1=1,p2=4,q1=1,q2=4,P1=1,P2=2,Q1=1,Q2=2,data=dead_ts)
+
+knitr::kable(output)
+
+output[which.min(output$AIC),]
+
+output[which.min(output$BIC),]
+
+output[which.min(output$AICc),]
+```
+
+The model with the lowest AIC, BIC amd AICc is ARIMA(0,1,2)x(0,1,1)12.
+
+### Inpatient bed time series
+```{r, message=FALSE,warning=FALSE}
+output=SARIMA.c(p1=1,p2=4,q1=1,q2=4,P1=1,P2=2,Q1=1,Q2=2,data=diff(hos_ts1))
+
+knitr::kable(output)
+
+output[which.min(output$AIC),]
+
+output[which.min(output$BIC),]
+
+output[which.min(output$AICc),]
+```
+
+The model with the lowest AIC, BIC amd AICc is ARIMA(3,1,0)x(0,1,0)12.
+
+### Inpatient bed used for COVID time series
+```{r, message=FALSE,warning=FALSE}
+output=SARIMA.c(p1=1,p2=4,q1=1,q2=4,P1=1,P2=2,Q1=1,Q2=2,data=diff(hos_ts2))
+
+knitr::kable(output)
+
+output[which.min(output$AIC),]
+
+output[which.min(output$BIC),]
+
+output[which.min(output$AICc),] 
+```
+
+The model with the lowest AIC, BIC amd AICc is ARIMA(0,1,2)x(0,1,1)12.
+
+### Utilization rate for inpatient bed used for COVID time series
+```{r, message=FALSE,warning=FALSE}
+output=SARIMA.c(p1=1,p2=4,q1=1,q2=4,P1=1,P2=2,Q1=1,Q2=2,data=diff(hos_ts3))
+
+knitr::kable(output)
+
+output[which.min(output$AIC),]
+
+output[which.min(output$BIC),]
+
+output[which.min(output$AICc),] 
+```
+
+The model with the lowest AIC, BIC amd AICc is ARIMA(0,1,2)x(0,1,1)12.
+
+### Unemployment rate time series
+
+Due to the presence of non-stationary seasonality in this time series data, we have opted to discontinue its use. Non-stationary seasonality implies that the patterns and trends within the data exhibit variations over time, without displaying a consistent and predictable behavior. As a result, attempting to model or analyze such data may lead to unreliable or inaccurate outcomes. Hence, to ensure the robustness and validity of our analyses, we have decided to cease utilizing this particular time series.
+
+
+### Pfizer stock price time series
+```{r, message=FALSE,warning=FALSE}
+output=SARIMA.c(p1=1,p2=4,q1=1,q2=4,P1=1,P2=2,Q1=1,Q2=2,data=stock_ts)
+
+knitr::kable(output)
+
+output[which.min(output$AIC),]
+
+output[which.min(output$BIC),]
+
+output[which.min(output$AICc),] 
+```
+
+The model with the lowest AIC, BIC amd AICc is ARIMA(0,1,0)x(0,1,0)12.
+
+### Support rate for democratic time series
+```{r, message=FALSE,warning=FALSE}
+output=SARIMA.c(p1=1,p2=4,q1=1,q2=4,P1=1,P2=2,Q1=1,Q2=2,data=demo_ts)
+
+knitr::kable(output)
+
+output[which.min(output$AIC),]
+
+output[which.min(output$BIC),]
+
+output[which.min(output$AICc),] 
+```
+
+The model with the lowest AIC, BIC amd AICc is ARIMA(0,1,1)x(1,1,0)12.
+
+### Support rate for independent time series
+```{r, message=FALSE,warning=FALSE}
+output=SARIMA.c(p1=1,p2=4,q1=1,q2=4,P1=1,P2=2,Q1=1,Q2=2,data=inde_ts)
+
+knitr::kable(output)
+
+output[which.min(output$AIC),]
+
+output[which.min(output$BIC),]
+
+output[which.min(output$AICc),] 
+```
+
+The model with the lowest AIC, BIC amd AICc is ARIMA(0,1,1)x(0,1,1)12.
+
+### Support rate for republican time series
+```{r, message=FALSE,warning=FALSE}
+output=SARIMA.c(p1=1,p2=4,q1=1,q2=4,P1=1,P2=2,Q1=1,Q2=2,data=rep_ts)
+
+knitr::kable(output)
+
+output[which.min(output$AIC),]
+
+output[which.min(output$BIC),]
+
+output[which.min(output$AICc),] 
+```
+
+The model with the lowest AIC, BIC amd AICc is ARIMA(0,1,2)x(0,1,1)12.
+
+:::
+
+
+
+
+# 12. Fitting Best SARIMA(p,d,q) & Diagnostics
+
+Due to the limitation where the number of lags exceeds the available number of observations in some of the time series data, we've adjusted these SARIMA model to utilize 4 lags instead of the initially intended 12. This adaptation ensures that the model remains feasible and effectively captures the temporal dependencies within the data, albeit with a reduced lag length. While this modification may slightly alter the model's predictive capacity, it allows us to derive meaningful insights and forecasts while circumventing the constraint posed by the insufficient number of observations.
+
+::: panel-tabset
+### Daily vaccinations time series
+```{r, message=FALSE,warning=FALSE}
+set.seed(123)
+model_output <- capture.output(sarima(diff(diff(d_vacc_ts)), 0,1,1,0,1,0,4))
+
+cat(model_output[35:45], model_output[length(model_output)], sep = "\n") 
+
+```
+
+The **Standard Residual Plot** appears good, displaying stationarity with a nearly constant mean and variation.
+
+The **Autocorrelation Function (ACF) Plot** shows almost no correlation indicating that the model has harnessed everything and all that is left is white noise. This indicates a good model fit.
+
+The **Quantile-Quantile (Q-Q) Plot** demonstrates near-normality.
+
+The **Ljung-Box test results** reveal values above the 0.05 (5% significance) threshold, indicating a good fit.
+
+**$ttable:** all coefficient is significant.
+
+The **equation** for the model is:
+$$x_t = w_t -0.9153w_{t-1} $$
+
+### People vaccinated time series
+```{r, message=FALSE,warning=FALSE}
+set.seed(123)
+model_output <- capture.output(sarima(p_vacc_ts, 1,1,2,0,1,0,4))
+
+cat(model_output[14:26], model_output[length(model_output)], sep = "\n") 
+```
+
+The **Standard Residual Plot** appears good, displaying stationarity with a nearly constant mean and variation.
+
+The **Autocorrelation Function (ACF) Plot** shows almost no correlation indicating that the model has harnessed everything and all that is left is white noise. This indicates a good model fit.
+
+The **Quantile-Quantile (Q-Q) Plot** demonstrates near-normality.
+
+The **Ljung-Box test results** reveal values above the 0.05 (5% significance) threshold, indicating a good fit.
+
+**$ttable:** only ma1 is significant.
+
+The **equation** for the model is:
+$$x_t = 0.4289x_{t-1} + w_t + 0.9434w_{t-1} + 0.3449w_{t-2}$$
+
+### People fully vaccinated time series
+```{r, message=FALSE,warning=FALSE}
+set.seed(123)
+model_output <- capture.output(sarima(pf_vacc_ts, 2,1,0,0,1,0,4))
+
+cat(model_output[19:30], model_output[length(model_output)], sep = "\n")
+```
+The **Standard Residual Plot** appears good, displaying stationarity with a nearly constant mean and variation.
+
+The **Autocorrelation Function (ACF) Plot** shows almost no correlation indicating that the model has harnessed everything and all that is left is white noise. This indicates a good model fit.
+
+The **Quantile-Quantile (Q-Q) Plot** demonstrates near-normality.
+
+The **Ljung-Box test results** reveal values above the 0.05 (5% significance) threshold, indicating a good fit.
+
+**$ttable:** all coefficients are significant.
+
+The **equation** for the model is:
+$$x_t = 1.40159x_{t-1} - 0.8044x_{t-2}$$
+
+### Death case time series
+```{r, message=FALSE,warning=FALSE}
+set.seed(123)
+model_output <- capture.output(sarima(dead_ts, 0,1,2,0,1,1,12))
+
+cat(model_output[36:48], model_output[length(model_output)], sep = "\n")
+```
+
+The **Standard Residual Plot** appears good, displaying stationarity with a nearly constant mean and variation.
+
+The **Autocorrelation Function (ACF) Plot** shows almost no correlation indicating that the model has harnessed everything and all that is left is white noise. This indicates a good model fit.
+
+The **Quantile-Quantile (Q-Q) Plot** demonstrates near-normality.
+
+The **Ljung-Box test results** reveal values above the 0.05 (5% significance) threshold, indicating a good fit.
+
+**$ttable:** ma1 and ma2 are significant.
+
+The **equation** for the model is:
+$$x_t = 1.8515x_{t-1} + 0.9997x_{t-2} - 0.9977 + a_{t}$$
+
+### Inpatient bed time series
+```{r, message=FALSE,warning=FALSE}
+set.seed(123)
+model_output <- capture.output(sarima(diff(hos_ts1), 3,1,0,0,1,0,12))
+
+cat(model_output[32:44], model_output[length(model_output)], sep = "\n")
+```
+
+The **Standard Residual Plot** appears good, displaying stationarity with a nearly constant mean and variation.
+
+The **Autocorrelation Function (ACF) Plot** shows almost no correlation indicating that the model has harnessed everything and all that is left is white noise. This indicates a good model fit.
+
+The **Quantile-Quantile (Q-Q) Plot** demonstrates near-normality.
+
+The **Ljung-Box test results** reveal values above the 0.05 (5% significance) threshold, indicating a good fit.
+
+**$ttable:** all coefficients are significant.
+
+The **equation** for the model is:
+$$x_t = -0.4824x_{t-1} - 0.4614x_{t-2} - 0.8923x_{t-2}$$
+
+### Inpatient bed used for COVID time series
+```{r, message=FALSE,warning=FALSE}
+set.seed(123)
+model_output <- capture.output(sarima(diff(hos_ts2), 0,1,2,0,1,1,12))
+
+cat(model_output[22:34], model_output[length(model_output)], sep = "\n")
+```
+
+The **Standard Residual Plot** appears good, displaying stationarity with a nearly constant mean and variation.
+
+The **Autocorrelation Function (ACF) Plot** shows almost no correlation indicating that the model has harnessed everything and all that is left is white noise. This indicates a good model fit.
+
+The **Quantile-Quantile (Q-Q) Plot** demonstrates near-normality.
+
+The **Ljung-Box test results** reveal values above the 0.05 (5% significance) threshold, indicating a good fit.
+
+**$ttable:** all coefficients are significant.
+
+The **equation** for the model is:
+$$x_t = -0.5988x_{t-1} - 0.4011x_{t-2} - 0.9994 + a_{t}$$
+
+### Utilization rate for inpatient bed used for COVID time series
+```{r, message=FALSE,warning=FALSE}
+set.seed(123)
+model_output <- capture.output(sarima(diff(hos_ts3), 0,1,2,0,1,1,12))
+
+cat(model_output[22:34], model_output[length(model_output)], sep = "\n")
+```
+
+The **Standard Residual Plot** appears good, displaying stationarity with a nearly constant mean and variation.
+
+The **Autocorrelation Function (ACF) Plot** shows almost no correlation indicating that the model has harnessed everything and all that is left is white noise. This indicates a good model fit.
+
+The **Quantile-Quantile (Q-Q) Plot** demonstrates near-normality.
+
+The **Ljung-Box test results** reveal values above the 0.05 (5% significance) threshold, indicating a good fit.
+
+**$ttable:** all coefficients are significant.
+
+The **equation** for the model is:
+$$x_t = -0.4717x_{t-1} - 0.5283x_{t-2} - 0.9997 + a_{t}$$
+
+### Pfizer stock price time series
+```{r, message=FALSE,warning=FALSE}
+set.seed(123)
+model_output <- capture.output(sarima(stock_ts, 0,1,0,0,1,0,12))
+
+cat(model_output[1:9], model_output[length(model_output)], sep = "\n")
+```
+
+The **Standard Residual Plot** appears good, displaying stationarity with a nearly constant mean and variation.
+
+The **Autocorrelation Function (ACF) Plot** shows almost no correlation indicating that the model has harnessed everything and all that is left is white noise. This indicates a good model fit.
+
+The **Quantile-Quantile (Q-Q) Plot** demonstrates near-normality.
+
+The **Ljung-Box test results** reveal values above the 0.05 (5% significance) threshold, indicating a good fit.
+
+
+### Support rate for democratic time series
+```{r, message=FALSE,warning=FALSE}
+set.seed(123)
+model_output <- capture.output(sarima(demo_ts, 0,1,1,1,1,0,12))
+
+cat(model_output[23:34], model_output[length(model_output)], sep = "\n")
+```
+
+The **Standard Residual Plot** appears good, displaying stationarity with a nearly constant mean and variation.
+
+The **Autocorrelation Function (ACF) Plot** shows almost no correlation indicating that the model has harnessed everything and all that is left is white noise. This indicates a good model fit.
+
+The **Quantile-Quantile (Q-Q) Plot** demonstrates near-normality.
+
+The **Ljung-Box test results** reveal values above the 0.05 (5% significance) threshold, indicating a good fit.
+
+The **equation** for the model is:
+$$x_t = -0.8685x_{t-1} - 0.5087 + a_{t}$$
+
+**$ttable:** all coefficients are significant.
+
+### Support rate for independent time series
+```{r, message=FALSE,warning=FALSE}
+set.seed(123)
+model_output <- capture.output(sarima(inde_ts, 0,1,1,0,1,1,12))
+
+cat(model_output[28:39], model_output[length(model_output)], sep = "\n")
+```
+
+The **Standard Residual Plot** appears good, displaying stationarity with a nearly constant mean and variation.
+
+The **Autocorrelation Function (ACF) Plot** shows almost no correlation indicating that the model has harnessed everything and all that is left is white noise. This indicates a good model fit.
+
+The **Quantile-Quantile (Q-Q) Plot** demonstrates near-normality.
+
+The **Ljung-Box test results** reveal values above the 0.05 (5% significance) threshold, indicating a good fit.
+
+**$ttable:** only ma1 are significant.
+
+The **equation** for the model is:
+$$x_t = -0.9999x_{t-1} - 0.9998 + a_{t}$$
+
+### Support rate for republican time series
+```{r, message=FALSE,warning=FALSE}
+set.seed(123)
+model_output <- capture.output(sarima(rep_ts, 0,1,2,0,1,1,12))
+
+cat(model_output[25:34], model_output[length(model_output)], sep = "\n")
+```
+
+The **Standard Residual Plot** appears good, displaying stationarity with a nearly constant mean and variation.
+
+The **Autocorrelation Function (ACF) Plot** shows almost no correlation indicating that the model has harnessed everything and all that is left is white noise. This indicates a good model fit.
+
+The **Quantile-Quantile (Q-Q) Plot** demonstrates near-normality.
+
+The **Ljung-Box test results** reveal values above the 0.05 (5% significance) threshold, indicating a good fit.
+
+**$ttable:** all coefficients are significant.
+
+The **equation** for the model is:
+$$x_t = -0.4338x_{t-1} - 0.4032x_{t-2} - 0.9999 + a_{t}$$
+
+:::
+
+
+
+# 13. Forecasting
+
+::: panel-tabset
+### Daily vaccinations time series
+```{r, message=FALSE,warning=FALSE}
+time <- Arima(diff(diff(d_vacc_ts)), order=c(0,1,1), seasonal=c(0,1,0))
+
+# forecast next three years
+time %>% forecast(h=36) %>% autoplot()+theme_bw() +
+      theme(plot.background = element_rect(fill = "#D9E3F1", color = NA),
+            panel.background = element_rect(fill = "#D9E3F1", color = NA))
+```
+
+### People vaccinated time series
+```{r, message=FALSE,warning=FALSE}
+time <- Arima(p_vacc_ts, order=c(1,1,2), seasonal=c(0,1,0))
+
+# forecast next three years
+time %>% forecast(h=36) %>% autoplot()+theme_bw() +
+      theme(plot.background = element_rect(fill = "#D9E3F1", color = NA),
+            panel.background = element_rect(fill = "#D9E3F1", color = NA))
+```
+
+
+### People fully vaccinated time series
+```{r, message=FALSE,warning=FALSE}
+time <- Arima(pf_vacc_ts, order=c(2,1,0), seasonal=c(0,1,0))
+
+# forecast next three years
+time %>% forecast(h=36) %>% autoplot()+theme_bw() +
+      theme(plot.background = element_rect(fill = "#D9E3F1", color = NA),
+            panel.background = element_rect(fill = "#D9E3F1", color = NA))
+```
+
+
+### Death case time series
+```{r, message=FALSE,warning=FALSE}
+time <- Arima(dead_ts, order=c(0,1,2), seasonal=c(0,1,1))
+
+# forecast next three years
+time %>% forecast(h=36) %>% autoplot()+theme_bw() +
+      theme(plot.background = element_rect(fill = "#D9E3F1", color = NA),
+            panel.background = element_rect(fill = "#D9E3F1", color = NA))
+```
+
+
+### Inpatient bed time series
+```{r, message=FALSE,warning=FALSE}
+time <- Arima(diff(hos_ts1), order=c(3,1,0), seasonal=c(0,1,0))
+
+# forecast next three years
+time %>% forecast(h=36) %>% autoplot()+theme_bw() +
+      theme(plot.background = element_rect(fill = "#D9E3F1", color = NA),
+            panel.background = element_rect(fill = "#D9E3F1", color = NA))
+```
+
+
+
+### Inpatient bed used for COVID time series
+```{r, message=FALSE,warning=FALSE}
+time <- Arima(diff(hos_ts2), order=c(0,1,2), seasonal=c(0,1,1))
+
+# forecast next three years
+time %>% forecast(h=36) %>% autoplot()+theme_bw() +
+      theme(plot.background = element_rect(fill = "#D9E3F1", color = NA),
+            panel.background = element_rect(fill = "#D9E3F1", color = NA))
+```
+
+
+### Utilization rate for inpatient bed used for COVID time series
+```{r, message=FALSE,warning=FALSE}
+time <- Arima(diff(hos_ts3), order=c(0,1,2), seasonal=c(0,1,1))
+
+# forecast next three years
+time %>% forecast(h=36) %>% autoplot()+theme_bw() +
+      theme(plot.background = element_rect(fill = "#D9E3F1", color = NA),
+            panel.background = element_rect(fill = "#D9E3F1", color = NA)) 
+```
+
+
+
+### Pfizer stock price time series
+```{r, message=FALSE,warning=FALSE}
+time <- Arima(stock_ts, order=c(0,1,0), seasonal=c(0,1,0))
+
+# forecast next three years
+time %>% forecast(h=36) %>% autoplot()+theme_bw() +
+      theme(plot.background = element_rect(fill = "#D9E3F1", color = NA),
+            panel.background = element_rect(fill = "#D9E3F1", color = NA))
+```
+
+
+### Support rate for democratic time series
+```{r, message=FALSE,warning=FALSE}
+time <- Arima(demo_ts, order=c(0,1,1), seasonal=c(1,1,0))
+
+# forecast next three years
+time %>% forecast(h=36) %>% autoplot()+theme_bw() +
+      theme(plot.background = element_rect(fill = "#D9E3F1", color = NA),
+            panel.background = element_rect(fill = "#D9E3F1", color = NA))
+```
+
+
+### Support rate for independent time series
+```{r, message=FALSE,warning=FALSE}
+time <- Arima(inde_ts, order=c(0,1,1), seasonal=c(0,1,1))
+
+# forecast next three years
+time %>% forecast(h=36) %>% autoplot()+theme_bw() +
+      theme(plot.background = element_rect(fill = "#D9E3F1", color = NA),
+            panel.background = element_rect(fill = "#D9E3F1", color = NA))
+```
+
+
+### Support rate for republican time series
+```{r, message=FALSE,warning=FALSE}
+time <- Arima(rep_ts, order=c(0,1,2), seasonal=c(0,1,1))
+
+# forecast next three years
+time %>% forecast(h=36) %>% autoplot()+theme_bw() +
+      theme(plot.background = element_rect(fill = "#D9E3F1", color = NA),
+            panel.background = element_rect(fill = "#D9E3F1", color = NA))
+```
+
+
+:::
+
+
+# 14. SARIMA vs. Benchmarks
+
+::: panel-tabset
+### Daily vaccinations time series
+```{r, message=FALSE,warning=FALSE}
+fit_techmu_bench <- Arima(d_vacc_ts, order=c(2, 1, 2),include.drift = FALSE) 
+autoplot(d_vacc_ts) +
+  autolayer(meanf(d_vacc_ts, h=10),
+            series="Mean", PI=FALSE) +
+  autolayer(naive(d_vacc_ts, h=10),
+            series="Naïve", PI=FALSE)+
+  autolayer(rwf(d_vacc_ts, drift=TRUE, h=10),
+            series="Drift", PI=FALSE)+
+   autolayer(forecast(d_vacc_ts ,10), 
+            series="Arima",PI=FALSE) + theme_bw() + ggtitle("Benchmark Methods Comparison with Daily Vaccinations")+
+  guides(colour=guide_legend(title="Forecast")) 
+```
+The plot you've uploaded appears to be a time series chart comparing different forecasting methods against actual data. The actual data is represented by the black line, and it shows daily vaccinations up to a certain point in time. The colored lines represent forecasts from different models, including ARIMA, Drift, Mean, and Naïve methods, projected beyond the actual data into future dates. Each forecast method predicts a different outcome for future vaccination numbers, with the ARIMA model suggesting a continued steady rate, while other models predict various levels of change or stability. Unfortunately, I can't display the plot here, but I can provide descriptions or summaries of visual data when you upload it.
+
+### People vaccinated time series
+```{r, message=FALSE,warning=FALSE}
+fit_techmu_bench <- Arima(p_vacc_ts, order=c(0, 1, 3),include.drift = FALSE) 
+autoplot(p_vacc_ts) +
+  autolayer(meanf(p_vacc_ts, h=10),
+            series="Mean", PI=FALSE) +
+  autolayer(naive(p_vacc_ts, h=10),
+            series="Naïve", PI=FALSE)+
+  autolayer(rwf(p_vacc_ts, drift=TRUE, h=10),
+            series="Drift", PI=FALSE)+
+   autolayer(forecast(p_vacc_ts ,10), 
+            series="Arima",PI=FALSE) + theme_bw() + ggtitle("Benchmark Methods Comparison with People Vaccinated")+
+  guides(colour=guide_legend(title="Forecast")) 
+```
+
+This plot appears to be comparing the forecasted number of people vaccinated using different benchmark methods against actual historical data. The black line represents the historical data of people vaccinated over time. The different colored lines at the end of the historical data represent forecasts made by different models for future vaccinations: Arima, Drift, Mean, and Naïve. The Arima model shows a sharp upward trend, suggesting a significant increase in vaccinations, while the other models forecast a relatively steady or only slightly increasing trend.
+
+### People fully vaccinated time series
+```{r, message=FALSE,warning=FALSE}
+fit_techmu_bench <- Arima(pf_vacc_ts, order=c(0, 1, 3),include.drift = FALSE) 
+autoplot(pf_vacc_ts) +
+  autolayer(meanf(pf_vacc_ts, h=10),
+            series="Mean", PI=FALSE) +
+  autolayer(naive(pf_vacc_ts, h=10),
+            series="Naïve", PI=FALSE)+
+  autolayer(rwf(pf_vacc_ts, drift=TRUE, h=10),
+            series="Drift", PI=FALSE)+
+   autolayer(forecast(pf_vacc_ts ,10), 
+            series="Arima",PI=FALSE) + theme_bw() + ggtitle("Benchmark Methods Comparison with People Fully Vaccinated")+
+  guides(colour=guide_legend(title="Forecast")) 
+```
+The plot appears to be a time series graph that shows data on the number of people fully vaccinated over time. The black line represents the actual historical data, showing a steady increase in the number of fully vaccinated individuals over time. The colored lines represent different forecasting methods projected into the future (2024 and beyond), such as ARIMA (Autoregressive Integrated Moving Average), Drift, Mean, and Naïve forecasting. Each method provides a different projection, indicating varying expectations about future vaccination trends based on past data.
+
+### Newly confirmed case time series
+```{r, message=FALSE,warning=FALSE}
+fit_techmu_bench <- Arima(case_ts, order=c(0, 1, 2),include.drift = FALSE) 
+autoplot(case_ts) +
+  autolayer(meanf(case_ts, h=10),
+            series="Mean", PI=FALSE) +
+  autolayer(naive(case_ts, h=10),
+            series="Naïve", PI=FALSE)+
+  autolayer(rwf(case_ts, drift=TRUE, h=10),
+            series="Drift", PI=FALSE)+
+   autolayer(forecast(case_ts ,10), 
+            series="Arima",PI=FALSE) + theme_bw() + ggtitle("Benchmark Methods Comparison with Newly Confirmed Case")+
+  guides(colour=guide_legend(title="Forecast")) 
+```
+
+The plot appears to show a comparison of different forecasting methods for a time series data set related to newly confirmed cases of a condition, likely COVID-19, given the context. The black line represents the actual historical data, while the various colored lines project into the future with forecasts from different methods. The ARIMA forecast (red) predicts an increase, while the Drift (green), Mean (blue), and Naïve (purple) methods predict a flat or slightly varied continuation of the most recent data. This type of visualization is used to compare the predictive performance of different statistical or machine learning models.
+
+### Death case time series
+```{r, message=FALSE,warning=FALSE}
+fit_techmu_bench <- Arima(dead_ts, order=c(0, 1, 6),include.drift = FALSE) 
+autoplot(dead_ts) +
+  autolayer(meanf(dead_ts, h=10),
+            series="Mean", PI=FALSE) +
+  autolayer(naive(dead_ts, h=10),
+            series="Naïve", PI=FALSE)+
+  autolayer(rwf(dead_ts, drift=TRUE, h=10),
+            series="Drift", PI=FALSE)+
+   autolayer(forecast(dead_ts ,10), 
+            series="Arima",PI=FALSE) + theme_bw() + ggtitle("Benchmark Methods Comparison with Death Case")+
+  guides(colour=guide_legend(title="Forecast")) 
+```
+The plot is a comparison of forecast methods for death cases over time, with historical data shown by the black line increasing from 2020 through 2023. On the y-axis, death cases are plotted on a logarithmic scale, allowing for a wide range of values. Past 2023, four different forecast methods are shown: ARIMA (red line), suggesting a continuous increase; Drift (green line), indicating a more moderate increase; Mean (blue line), projecting a flat trend indicating no change from the last actual data point; and Naive (purple line), also predicting no change moving forward. These forecasts are meant to predict future values based on the historical trend and their respective statistical assumptions. The plot serves as a visual assessment tool to compare how each method anticipates the future based on the given data.
+
+### Inpatient bed time series
+```{r, message=FALSE,warning=FALSE}
+fit_techmu_bench <- Arima(hos_ts1, order=c(0, 1, 1),include.drift = FALSE) 
+autoplot(hos_ts1) +
+  autolayer(meanf(hos_ts1, h=10),
+            series="Mean", PI=FALSE) +
+  autolayer(naive(hos_ts1, h=10),
+            series="Naïve", PI=FALSE)+
+  autolayer(rwf(hos_ts1, drift=TRUE, h=10),
+            series="Drift", PI=FALSE)+
+   autolayer(forecast(hos_ts1 ,10), 
+            series="Arima",PI=FALSE) + theme_bw() + ggtitle("Benchmark Methods Comparison with Inpatient Bed Number")+
+  guides(colour=guide_legend(title="Forecast")) 
+```
+
+This graph illustrates the comparison of various forecasting methods applied to the number of inpatient beds over time. The historical data, plotted as a black line, shows a sharp increase in the number of beds around 2020, followed by a stabilization around 6e+05 (600,000 beds). Post-2023, the graph features predictions from different statistical models: ARIMA (red line) predicts a significant increase in bed numbers; Drift (green line) forecasts a slight upward trend; Mean (blue line) suggests the number will remain constant, equal to the historical average; and Naive (purple line) assumes no change, extending the last data point forward. The plot serves as a tool to visualize and evaluate how these models anticipate changes in hospital bed availability, with each model's forecast based on its specific methodological approach to the existing data.
+
+### Inpatient bed used for COVID time series
+```{r, message=FALSE,warning=FALSE}
+fit_techmu_bench <- Arima(hos_ts2, order=c(2, 1, 1),include.drift = FALSE) 
+autoplot(hos_ts2) +
+  autolayer(meanf(hos_ts2, h=10),
+            series="Mean", PI=FALSE) +
+  autolayer(naive(hos_ts2, h=10),
+            series="Naïve", PI=FALSE)+
+  autolayer(rwf(hos_ts2, drift=TRUE, h=10),
+            series="Drift", PI=FALSE)+
+   autolayer(forecast(hos_ts2 ,10), 
+            series="Arima",PI=FALSE) + theme_bw() + ggtitle("Benchmark Methods Comparison with Inpatient Bed Number Used for COVID")+
+  guides(colour=guide_legend(title="Forecast")) 
+```
+The plot depicts the number of inpatient hospital beds used for COVID-19 over time, showing a volatile history with several peaks, particularly notable in 2020 and 2021. The time series data, illustrated by the black line, exhibits sharp increases and decreases, suggesting waves or surges in hospital bed usage due to the pandemic. Looking into the future beyond the historical data, various forecasting methods have been applied, shown by the horizontal lines after 2023: ARIMA (red) forecasts a slight increase, Drift (green) indicates stability with a very mild upward trend, Mean (blue) predicts a constant number equal to the historical average, and Naive (purple) extends the last observed data point forward, assuming no change. These forecasts provide a range of potential future scenarios for hospital bed usage, reflecting the differing assumptions and calculations inherent to each forecasting model.
+
+### Utilization rate for inpatient bed used for COVID time series
+```{r, message=FALSE,warning=FALSE}
+fit_techmu_bench <- Arima(hos_ts3, order=c(2, 0, 0),include.drift = FALSE) 
+autoplot(hos_ts3) +
+  autolayer(meanf(hos_ts3, h=10),
+            series="Mean", PI=FALSE) +
+  autolayer(naive(hos_ts3, h=10),
+            series="Naïve", PI=FALSE)+
+  autolayer(rwf(hos_ts3, drift=TRUE, h=10),
+            series="Drift", PI=FALSE)+
+   autolayer(forecast(hos_ts3 ,10), 
+            series="Arima",PI=FALSE) + theme_bw() + ggtitle("Benchmark Methods Comparison with Utilization Rate for Inpatient Bed Used for COVID")+
+  guides(colour=guide_legend(title="Forecast")) 
+```
+
+This plot compares different forecasting methods for the utilization rate of inpatient beds used for COVID-19, as indicated by the historical data (black line) from 2020 to 2023. The y-axis represents the utilization rate, which shows significant fluctuations, peaking notably at various points likely corresponding to waves of COVID-19 cases. The forecast methods, represented by colored lines beyond 2023, provide different projections: ARIMA (red line) shows a slight increasing trend, Drift (green line) indicates a marginal increase, Mean (blue line) suggests a flat trend at the historical average, and Naive (purple line) extends the last observed data point, assuming the rate will remain unchanged. These models are used to predict future bed utilization, offering a visual tool for comparing the potential accuracy and assumptions of each method against future real-world data.
+
+### Unemployment rate time series
+```{r, message=FALSE,warning=FALSE}
+fit_techmu_bench <- Arima(unemploy_ts, order=c(1, 0, 1),include.drift = FALSE) 
+autoplot(unemploy_ts) +
+  autolayer(meanf(unemploy_ts, h=10),
+            series="Mean", PI=FALSE) +
+  autolayer(naive(unemploy_ts, h=10),
+            series="Naïve", PI=FALSE)+
+  autolayer(rwf(unemploy_ts, drift=TRUE, h=10),
+            series="Drift", PI=FALSE)+
+   autolayer(forecast(unemploy_ts ,10), 
+            series="Arima",PI=FALSE) + theme_bw() + ggtitle("Benchmark Methods Comparison with Unemployment Rate")+
+  guides(colour=guide_legend(title="Forecast")) 
+```
+
+This plot displays the historical trend and forecasts of the unemployment rate from 2020 to beyond 2022. The black line represents the actual historical unemployment rate, which shows a sharp spike in 2020, followed by a general decline over the subsequent years. Looking to the future, the forecasts made by different models are represented by the horizontal lines: ARIMA (red line) predicts a downward trend, continuing the decline of the unemployment rate; Drift (green line) suggests a stable rate, maintaining the last observed rate; Mean (blue line) forecasts that the unemployment rate will average out to a steady state, ignoring the downward trend; and Naive (purple line) projects no change, extending the last observed point into the future. The plot serves to compare how these forecasting methods project the future of unemployment rates based on the past data and their respective algorithmic interpretations.
+
+### Pfizer stock price time series
+```{r, message=FALSE,warning=FALSE}
+fit_techmu_bench <- Arima(stock_ts, order=c(1, 0, 3),include.drift = FALSE) 
+autoplot(stock_ts) +
+  autolayer(meanf(stock_ts, h=10),
+            series="Mean", PI=FALSE) +
+  autolayer(naive(stock_ts, h=10),
+            series="Naïve", PI=FALSE)+
+  autolayer(rwf(stock_ts, drift=TRUE, h=10),
+            series="Drift", PI=FALSE)+
+   autolayer(forecast(stock_ts ,10), 
+            series="Arima",PI=FALSE) + theme_bw() + ggtitle("Benchmark Methods Comparison with Pfizer Stock Price")+
+  guides(colour=guide_legend(title="Forecast")) 
+```
+
+The plot shows the historical performance and future forecast of Pfizer's stock price. The black line represents the stock price from 2020 through part of 2023, with the price experiencing volatility and an overall downward trend. Projected forecasts beyond the historical data are made using four methods: ARIMA (red line) predicts a continuing decline; Drift (green line) forecasts a slight increase; Mean (blue line) suggests the stock price will level off to the average of the historical data; and Naive (purple line) assumes the stock price will remain constant at the last observed value. These different forecasts highlight the variability in predicting stock prices depending on the modeling technique used, with each forecast method taking a unique approach to extrapolate future prices from the past data.
+
+### Support rate for democratic time series
+```{r, message=FALSE,warning=FALSE}
+fit_techmu_bench <- Arima(demo_ts, order=c(0, 0, 1),include.drift = FALSE) 
+autoplot(demo_ts) +
+  autolayer(meanf(demo_ts, h=10),
+            series="Mean", PI=FALSE) +
+  autolayer(naive(demo_ts, h=10),
+            series="Naïve", PI=FALSE)+
+  autolayer(rwf(demo_ts, drift=TRUE, h=10),
+            series="Drift", PI=FALSE)+
+   autolayer(forecast(demo_ts ,10), 
+            series="Arima",PI=FALSE) + theme_bw() + ggtitle("Benchmark Methods Comparison with Support Rate for Democratic")+
+  guides(colour=guide_legend(title="Forecast")) 
+```
+
+The graph illustrates the historical support rate for the Democratic Party (presumably in the United States) from 2020 to the latter part of 2023, along with projected forecasts using various methods. The support rate, shown by the black line, fluctuates over time with notable volatility but remains within a band between approximately 0.86 and 0.92. The future forecasts, indicated by the lines extending from the end of 2023 to 2025, predict the support rate using different statistical models: ARIMA (red) forecasts a stable support rate continuing from the last observed point; Drift (green) also suggests a stable but slightly declining trend; Mean (blue) projects that the support rate will level off to the historical mean, and Naive (purple) predicts no change, carrying the last observed support rate forward. These projections provide a range of scenarios for future party support, each based on different assumptions about the patterns in the historical data.
+
+### Support rate for independent time series
+```{r, message=FALSE,warning=FALSE}
+fit_techmu_bench <- Arima(inde_ts, order=c(0, 0, 1),include.drift = FALSE) 
+autoplot(inde_ts) +
+  autolayer(meanf(inde_ts, h=10),
+            series="Mean", PI=FALSE) +
+  autolayer(naive(inde_ts, h=10),
+            series="Naïve", PI=FALSE)+
+  autolayer(rwf(inde_ts, drift=TRUE, h=10),
+            series="Drift", PI=FALSE)+
+   autolayer(forecast(inde_ts ,10), 
+            series="Arima",PI=FALSE) + theme_bw() + ggtitle("Benchmark Methods Comparison with Support Rate for Independent")+
+  guides(colour=guide_legend(title="Forecast")) 
+```
+The plot displays the fluctuating support rate for Independents, presumably in a political context, from 2020 through 2023, and forecasts for this rate into 2025 using different statistical methods. The black line shows actual historical data, indicating that support for Independents has varied, with rates moving between just below 0.25 and around 0.35. Post-2023, the forecast lines suggest different future trends: the ARIMA model (red) predicts a very slight decline, the Drift method (green) suggests a constant rate with a small upward tendency, the Mean (blue) indicates a flat forecast at the historical average, and the Naive approach (purple) projects the rate will remain unchanged at the last observed point. These projections offer diverse perspectives on potential future support for Independents based on past patterns.
+
+### Support rate for republican time series
+```{r, message=FALSE,warning=FALSE}
+fit_techmu_bench <- Arima(rep_ts, order=c(1, 0, 1),include.drift = FALSE) 
+autoplot(rep_ts) +
+  autolayer(meanf(rep_ts, h=10),
+            series="Mean", PI=FALSE) +
+  autolayer(naive(rep_ts, h=10),
+            series="Naïve", PI=FALSE)+
+  autolayer(rwf(rep_ts, drift=TRUE, h=10),
+            series="Drift", PI=FALSE)+
+   autolayer(forecast(rep_ts ,10), 
+            series="Arima",PI=FALSE) + theme_bw() + ggtitle("Benchmark Methods Comparison with Support Rate for Republican")+
+  guides(colour=guide_legend(title="Forecast")) 
+```
+This plot presents the support rate for the Republican Party from 2020 through 2023 and includes projections to 2025 based on various forecasting models. The support rate, depicted by the black line, exhibits volatility with values oscillating primarily between 0.05 and 0.1. The forecast section post-2023 features predictions from different models: ARIMA (red line) suggests a decrease in support; Drift (green line) forecasts a small upward trend; Mean (blue line) indicates that support will stabilize at the historical average rate; and Naive (purple line) predicts the support rate will remain constant at the end of the observed data. These differing forecasts provide insights into possible future trends of Republican support, each based on distinct statistical assumptions and calculations.
+
+:::
+
+
+
+# 15. Cross Validation
+
+We did cross validation to select the best performed model to those time series with over 40 samples. Since the Auto Arima function did not provide us with the best SARIMA model, we use the model with lowest AIC and second lowest AIC to compare their performance.
+
+::: panel-tabset
+
+### Death case time series
+In the death case time series, we select model ARIMA(0,1,2)x(0,1,1)12(lowest AIC) and model ARIMA(0,1,2)x(1,1,0)12(second lowest AIC).
+
+```{r, message=FALSE,warning=FALSE}
+#n=length(dead_ts)
+#n-k=24; 24/12=2; 
+k=19
+mae1 <- matrix(NA, 2,12) 
+mae2 <- matrix(NA, 2,12)
+
+st <- tsp(dead_ts)[1]+(k-1)/12 #24 observations
+# put up to 2
+for(i in 1:2)
+{
+  #xtrain <- window(a10, start=st+(i-k+1)/12, end=st+i/12)
+  xtrain <- window(dead_ts, end=st + i-1)
+  xtest <- window(dead_ts, start=st + (i-1) + 1/12, end=st + i)
+  # 1st model
+  fit <- Arima(xtrain, order=c(0,1,2), seasonal=list(order=c(0,1,1), period=12),
+                include.drift=TRUE, method="ML")
+  fcast <- forecast(fit, h=1)
+  # 2nd Arima
+  fit2 <- Arima(xtrain, order=c(0,1,2), seasonal=list(order=c(1,1,0), period=12),
+                include.drift=TRUE, method="ML")
+  fcast2 <- forecast(fit2, h=1)
+  
+  mae1[i,] <- abs(fcast$mean-xtest)
+  mae2[i,] <- abs(fcast2$mean-xtest)
+  
+}
+
+max_mae <- max(c(colMeans(mae1, na.rm = TRUE), colMeans(mae2, na.rm = TRUE)), na.rm = TRUE)
+ylim_range <- c(0, max_mae + max_mae * 0.3)
+plot(1:12, colMeans(mae1, na.rm = TRUE), type = "l", col = 2, xlab = "Horizon", ylab = "MAE", ylim = ylim_range)
+lines(1:12, colMeans(mae2, na.rm = TRUE), type = "l", col = 3)
+legend("topleft", legend = c("Model with lowest AIC", "Model with second lowest AIC"), col = 2:3, lty = 1)
+
+```
+We can see the model with the lowest AIC actually performs better!
+
+
+### Inpatient bed time series
+
+In the inpatient bed time series, we select model ARIMA(3,1,0)x(0,1,0)12(lowest AIC) and model ARIMA(1,1,1)x(0,1,0)12(second lowest AIC).
+
+```{r, message=FALSE,warning=FALSE}
+#n=length(hos_ts1) 49
+#n-k=25; 24/12=2; 
+k=25
+mae1 <- matrix(NA, 2,12) 
+mae2 <- matrix(NA, 2,12)
+
+st <- tsp(hos_ts1)[1]+(k-1)/12 #24 observations
+# put up to 2
+for(i in 1:2)
+{
+  #xtrain <- window(a10, start=st+(i-k+1)/12, end=st+i/12)
+  xtrain <- window(hos_ts1, end=st + i-1)
+  xtest <- window(hos_ts1, start=st + (i-1) + 1/12, end=st + i)
+  # 1st model
+  fit <- Arima(xtrain, order=c(3,1,0), seasonal=list(order=c(0,1,0), period=12),
+                include.drift=TRUE, method="ML")
+  fcast <- forecast(fit, h=1)
+  # 2nd Arima
+  fit2 <- Arima(xtrain, order=c(1,1,1), seasonal=list(order=c(0,1,0), period=12),
+                include.drift=TRUE, method="ML")
+  fcast2 <- forecast(fit2, h=1)
+  
+  mae1[i,] <- abs(fcast$mean-xtest)
+  mae2[i,] <- abs(fcast2$mean-xtest)
+  
+}
+
+max_mae <- max(c(colMeans(mae1, na.rm = TRUE), colMeans(mae2, na.rm = TRUE)), na.rm = TRUE)
+ylim_range <- c(0, max_mae + max_mae * 0.3)
+plot(1:12, colMeans(mae1, na.rm = TRUE), type = "l", col = 2, xlab = "Horizon", ylab = "MAE", ylim = ylim_range)
+lines(1:12, colMeans(mae2, na.rm = TRUE), type = "l", col = 3)
+legend("topleft", legend = c("Model with lowest AIC", "Model with second lowest AIC"), col = 2:3, lty = 1)
+```
+
+We can see the model with the second lowest AIC actually performs better!
+
+### Inpatient bed used for COVID time series
+
+In the inpatient bed used for COVIS time series, we select model ARIMA(0,1,2)x(0,1,1)12(lowest AIC) and model ARIMA(1,1,1)x(0,1,1)12(second lowest AIC).
+
+```{r, message=FALSE,warning=FALSE}
+#n=length(hos_ts2) 49
+#n-k=25; 24/12=2; 
+k=25
+mae1 <- matrix(NA, 2,12) 
+mae2 <- matrix(NA, 2,12)
+
+st <- tsp(hos_ts2)[1]+(k-1)/12 #24 observations
+# put up to 2
+for(i in 1:2)
+{
+  #xtrain <- window(a10, start=st+(i-k+1)/12, end=st+i/12)
+  xtrain <- window(hos_ts2, end=st + i-1)
+  xtest <- window(hos_ts2, start=st + (i-1) + 1/12, end=st + i)
+  # 1st model
+  fit <- Arima(xtrain, order=c(0,1,2), seasonal=list(order=c(0,1,1), period=12),
+                include.drift=TRUE, method="ML")
+  fcast <- forecast(fit, h=1)
+  # 2nd Arima
+  fit2 <- Arima(xtrain, order=c(1,1,1), seasonal=list(order=c(0,1,1), period=12),
+                include.drift=TRUE, method="ML")
+  fcast2 <- forecast(fit2, h=1)
+  
+  mae1[i,] <- abs(fcast$mean-xtest)
+  mae2[i,] <- abs(fcast2$mean-xtest)
+  
+}
+
+max_mae <- max(c(colMeans(mae1, na.rm = TRUE), colMeans(mae2, na.rm = TRUE)), na.rm = TRUE)
+ylim_range <- c(0, max_mae + max_mae * 0.3)
+plot(1:12, colMeans(mae1, na.rm = TRUE), type = "l", col = 2, xlab = "Horizon", ylab = "MAE", ylim = ylim_range)
+lines(1:12, colMeans(mae2, na.rm = TRUE), type = "l", col = 3)
+legend("topleft", legend = c("Model with lowest AIC", "Model with second lowest AIC"), col = 2:3, lty = 1)
+```
+We can see the model with the lowest AIC actually performs better!
+
+
+### Utilization rate for inpatient bed used for COVID time series
+
+In the utilization rate for inpatient bed used for COVID time series, we select model ARIMA(0,1,2)x(0,1,1)12(lowest AIC) and model ARIMA(0,1,2)x(1,1,0)12(second lowest AIC).
+
+```{r, message=FALSE,warning=FALSE}
+#n=length(hos_ts3) 49
+#n-k=25; 24/12=2; 
+k=25
+mae1 <- matrix(NA, 2,12) 
+mae2 <- matrix(NA, 2,12)
+
+st <- tsp(hos_ts3)[1]+(k-1)/12 #24 observations
+# put up to 2
+for(i in 1:2)
+{
+  #xtrain <- window(a10, start=st+(i-k+1)/12, end=st+i/12)
+  xtrain <- window(hos_ts3, end=st + i-1)
+  xtest <- window(hos_ts3, start=st + (i-1) + 1/12, end=st + i)
+  # 1st model
+  fit <- Arima(xtrain, order=c(0,1,2), seasonal=list(order=c(0,1,1), period=12),
+                include.drift=TRUE, method="ML")
+  fcast <- forecast(fit, h=1)
+  # 2nd Arima
+  fit2 <- Arima(xtrain, order=c(0,1,2), seasonal=list(order=c(1,1,0), period=12),
+                include.drift=TRUE, method="ML")
+  fcast2 <- forecast(fit2, h=1)
+  
+  mae1[i,] <- abs(fcast$mean-xtest)
+  mae2[i,] <- abs(fcast2$mean-xtest)
+  
+}
+
+max_mae <- max(c(colMeans(mae1, na.rm = TRUE), colMeans(mae2, na.rm = TRUE)), na.rm = TRUE)
+ylim_range <- c(0, max_mae + max_mae * 0.3)
+plot(1:12, colMeans(mae1, na.rm = TRUE), type = "l", col = 2, xlab = "Horizon", ylab = "MAE", ylim = ylim_range)
+lines(1:12, colMeans(mae2, na.rm = TRUE), type = "l", col = 3)
+legend("topleft", legend = c("Model with lowest AIC", "Model with second lowest AIC"), col = 2:3, lty = 1)
+```
+We can see the model with the second lowest AIC actually performs better!
+
+
+
+### Support rate for democratic time series
+
+In the support rate for democratic time series, we select model ARIMA(0,1,1)x(1,1,0)12(lowest AIC) and model ARIMA(1,1,1)x(1,1,0)12(second lowest AIC).
+
+```{r, message=FALSE,warning=FALSE}
+#n=length(demo_ts) 49
+#n-k=25; 24/12=2; 
+k=25
+mae1 <- matrix(NA, 2,12) 
+mae2 <- matrix(NA, 2,12)
+
+st <- tsp(demo_ts)[1]+(k-1)/12 #24 observations
+# put up to 2
+for(i in 1:2)
+{
+  #xtrain <- window(a10, start=st+(i-k+1)/12, end=st+i/12)
+  xtrain <- window(demo_ts, end=st + i-1)
+  xtest <- window(demo_ts, start=st + (i-1) + 1/12, end=st + i)
+  # 1st model
+  fit <- Arima(xtrain, order=c(0,1,1), seasonal=list(order=c(1,1,0), period=12),
+                include.drift=TRUE, method="ML")
+  fcast <- forecast(fit, h=1)
+  # 2nd Arima
+  fit2 <- Arima(xtrain, order=c(1,1,1), seasonal=list(order=c(1,1,0), period=12),
+                include.drift=TRUE, method="ML")
+  fcast2 <- forecast(fit2, h=1)
+  
+  mae1[i,] <- abs(fcast$mean-xtest)
+  mae2[i,] <- abs(fcast2$mean-xtest)
+  
+}
+
+max_mae <- max(c(colMeans(mae1, na.rm = TRUE), colMeans(mae2, na.rm = TRUE)), na.rm = TRUE)
+ylim_range <- c(0, max_mae + max_mae * 0.3)
+plot(1:12, colMeans(mae1, na.rm = TRUE), type = "l", col = 2, xlab = "Horizon", ylab = "MAE", ylim = ylim_range)
+lines(1:12, colMeans(mae2, na.rm = TRUE), type = "l", col = 3)
+legend("topleft", legend = c("Model with lowest AIC", "Model with second lowest AIC"), col = 2:3, lty = 1) 
+```
+
+We can see the model with the second lowest AIC actually performs better!
+
+### Support rate for independent time series
+
+In the support rate for independent time series, we select model ARIMA(0,1,1)x(0,1,1)12(lowest AIC) and model ARIMA(1,1,1)x(0,1,1)12(second lowest AIC).
+
+
+```{r, message=FALSE,warning=FALSE}
+#n=length(inde_ts) 49
+#n-k=25; 24/12=2; 
+k=25
+mae1 <- matrix(NA, 2,12) 
+mae2 <- matrix(NA, 2,12)
+
+st <- tsp(inde_ts)[1]+(k-1)/12 #24 observations
+# put up to 2
+for(i in 1:2)
+{
+  #xtrain <- window(a10, start=st+(i-k+1)/12, end=st+i/12)
+  xtrain <- window(inde_ts, end=st + i-1)
+  xtest <- window(inde_ts, start=st + (i-1) + 1/12, end=st + i)
+  # 1st model
+  fit <- Arima(xtrain, order=c(0,1,1), seasonal=list(order=c(0,1,1), period=12),
+                include.drift=TRUE, method="ML")
+  fcast <- forecast(fit, h=1)
+  # 2nd Arima
+  fit2 <- Arima(xtrain, order=c(1,1,1), seasonal=list(order=c(0,1,1), period=12),
+                include.drift=TRUE, method="ML")
+  fcast2 <- forecast(fit2, h=1)
+  
+  mae1[i,] <- abs(fcast$mean-xtest)
+  mae2[i,] <- abs(fcast2$mean-xtest)
+  
+}
+
+max_mae <- max(c(colMeans(mae1, na.rm = TRUE), colMeans(mae2, na.rm = TRUE)), na.rm = TRUE)
+ylim_range <- c(0, max_mae + max_mae * 0.3)
+plot(1:12, colMeans(mae1, na.rm = TRUE), type = "l", col = 2, xlab = "Horizon", ylab = "MAE", ylim = ylim_range)
+lines(1:12, colMeans(mae2, na.rm = TRUE), type = "l", col = 3)
+legend("topleft", legend = c("Model with lowest AIC", "Model with second lowest AIC"), col = 2:3, lty = 1) 
+```
+
+We can see the model with the second lowest AIC actually performs better!
+
+### Support rate for republican time series
+
+In the support rate for republican time series, we select model ARIMA(0,1,2)x(0,1,1)12(lowest AIC) and model ARIMA(1,1,1)x(0,1,1)12(second lowest AIC).
+
+```{r, message=FALSE,warning=FALSE}
+#n=length(rep_ts) 49
+#n-k=25; 24/12=2; 
+k=25
+mae1 <- matrix(NA, 2,12) 
+mae2 <- matrix(NA, 2,12)
+
+st <- tsp(rep_ts)[1]+(k-1)/12 #24 observations
+# put up to 2
+for(i in 1:2)
+{
+  #xtrain <- window(a10, start=st+(i-k+1)/12, end=st+i/12)
+  xtrain <- window(rep_ts, end=st + i-1)
+  xtest <- window(rep_ts, start=st + (i-1) + 1/12, end=st + i)
+  # 1st model
+  fit <- Arima(xtrain, order=c(0,1,2), seasonal=list(order=c(0,1,1), period=12),
+                include.drift=TRUE, method="ML")
+  fcast <- forecast(fit, h=1)
+  # 2nd Arima
+  fit2 <- Arima(xtrain, order=c(1,1,1), seasonal=list(order=c(0,1,1), period=12),
+                include.drift=TRUE, method="ML")
+  fcast2 <- forecast(fit2, h=1)
+  
+  mae1[i,] <- abs(fcast$mean-xtest)
+  mae2[i,] <- abs(fcast2$mean-xtest)
+  
+}
+
+max_mae <- max(c(colMeans(mae1, na.rm = TRUE), colMeans(mae2, na.rm = TRUE)), na.rm = TRUE)
+ylim_range <- c(0, max_mae + max_mae * 0.3)
+plot(1:12, colMeans(mae1, na.rm = TRUE), type = "l", col = 2, xlab = "Horizon", ylab = "MAE", ylim = ylim_range)
+lines(1:12, colMeans(mae2, na.rm = TRUE), type = "l", col = 3)
+legend("topleft", legend = c("Model with lowest AIC", "Model with second lowest AIC"), col = 2:3, lty = 1) 
+```
+We can see the model with the second lowest AIC actually performs better!
+
+:::
+
+

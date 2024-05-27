@@ -1,0 +1,304 @@
+---
+title: "Data Visualization"
+format:  
+  html:
+   embed-resources: true
+   code-fold: true
+---
+
+```{r, echo=FALSE,message=FALSE,warning=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(readxl)
+library(forecast)
+library(lubridate)
+library(astsa) 
+library(xts)
+library(tseries)
+library(fpp2)
+library(fma)
+library(lubridate)
+library(tidyverse)
+library(TSstudio)
+library(quantmod)
+library(tidyquant)
+library(plotly)
+library(data.table)
+library(kableExtra)
+```
+
+# 1. Vaccination Rate
+
+This visualization is created by Tableau, check the interactive dashboard [here](https://public.tableau.com/app/profile/jiaqin.wu/viz/tableau_vacc/Story1?publish=yes).
+
+### Daily Vaccination Number Per Million
+
+![](Pics/vacc1.jpg)
+
+In this analysis, we focus on three prominent regions in the United States: Washington D.C., New York, and California. By examining the daily vaccination numbers over time, we gain insights into the vaccination trends within each of these regions. Notably, May 2021 emerges as a peak period, marked by a significant surge in vaccination rates across all three regions, indicative of a concerted effort to inoculate a large portion of the population. However, we also observe sporadic peaks in certain time periods and states, such as December 2021 in New York and February 2022 in Washington D.C. These anomalies suggest localized events or circumstances driving heightened vaccination activity within specific regions. Given the absence of nationwide events impacting vaccination rates uniformly, we hypothesize that these sudden spikes are likely attributable to unique local factors or initiatives. Further investigation into the underlying causes of these localized surges could provide valuable insights into the dynamics of vaccination efforts at the regional level.
+
+### Number of People Vaccinated Per Hundred
+
+![](Pics/vacc2.jpg)
+
+In this analysis, we have chosen May 10th, 2023, as our cutoff date to examine the disparities in vaccination rates per hundred individuals across different states in the post-pandemic landscape. Our visualization reveals striking contrasts among states: Massachusetts, Washington D.C., and Maryland exhibit notably higher vaccination rates, reflecting proactive vaccination campaigns and robust healthcare infrastructure. Conversely, states situated in the heartland consistently register lower vaccination rates. However, it is encouraging to note that even in these regions, the overall vaccination rates remain above 56%, underscoring a nationwide effort to achieve widespread immunity. This observation suggests a collective commitment to combating the pandemic, albeit with variations in regional implementation and success.
+
+### Number of People Vaccinated Per Hundred
+
+![](Pics/vacc3.jpg)
+In this analysis, we have selected Alabama, Alaska, and American Samoa as representative examples for analysis. We observe a consistent upward trend in the fully vaccinated rate until April 2022, after which the rate stabilizes. Notably, American Samoa emerges as the frontrunner with the highest fully vaccinated rate, surpassing 90%, indicative of a successful vaccination campaign and strong community engagement. In contrast, Alabama lags behind the other two states, with its fully vaccinated rate only surpassing 53%. This discrepancy underscores the importance of targeted interventions and resources to address disparities and ensure equitable access to vaccination across diverse regions.
+
+# 2. Newly Confirmed Cases & Death Cases
+
+### Newly Confirmed Cases
+
+```{r, message=FALSE,warning=FALSE}
+wide_data <- read_csv("Datasets/covid_confirmed_usafacts.csv")
+
+# Define the key and value columns for pivoting
+key_cols <- c("countyFIPS", "County Name", "State", "StateFIPS")
+value_cols <- setdiff(names(wide_data), key_cols)
+
+# Pivot the data from wide to long
+long_data <- pivot_longer(
+  wide_data,
+  cols = value_cols,
+  names_to = "date",
+  values_to = "value"
+)
+
+# Group by 'State' and 'date', and calculate the sum of Confirmed Cases
+con_case_df <- long_data %>%
+  group_by(State, date) %>%
+  summarize(value_sum = sum(value, na.rm = TRUE))
+
+# Calculate the daily new cases
+con_case_df1 <- con_case_df %>%
+  group_by(State) %>%
+  mutate(new_cases = value_sum - lag(value_sum, default = 0))
+
+# Convert date column to Date format
+con_case_df1$date <- as.Date(con_case_df1$date)
+
+# Filter data for DC
+con_case_df2 <- subset(con_case_df1, State == 'DC')
+
+# Visualize the plot
+gg<-ggplot(data = con_case_df2, aes(x = date, y = new_cases)) +
+  geom_line(colour = "#5a3196") +
+  labs(x = "Date", y = "Newly Confirmed Cases", title = "Trend of Newly Confirmed COVID-19 Cases in DC") +
+  theme_minimal() 
+
+plotly_gg <- ggplotly(gg)
+plotly_gg
+```
+
+Upon examining the visualization with Washington D.C. as our focal point, notable trends emerge. Between December 2021 and January 2022, a prominent peak in newly confirmed COVID-19 cases is observed, marking a period of heightened transmission within the region. This surge may be attributed to the emergence of viral mutations or other factors influencing transmission dynamics. Additionally, a smaller peak is evident in April 2022, suggesting fluctuations in case numbers over time. These findings underscore the dynamic nature of the COVID-19 pandemic and highlight the importance of monitoring and understanding temporal changes in case counts across different states.
+
+### Death Cases
+
+```{r, message=FALSE,warning=FALSE}
+wide_data <- read_csv("Datasets/covid_deaths_usafacts.csv")
+
+# Define the key and value columns for pivoting
+key_cols <- c("countyFIPS", "County Name", "State", "StateFIPS")
+value_cols <- setdiff(names(wide_data), key_cols)
+
+# Pivot the data from wide to long
+long_data <- pivot_longer(
+  wide_data,
+  cols = value_cols,
+  names_to = "date",
+  values_to = "value"
+)
+
+# Group by 'State' and 'date', and calculate the sum of Confirmed Cases
+dead_case_df <- long_data %>%
+  group_by(State, date) %>%
+  summarize(value_sum = sum(value, na.rm = TRUE))
+
+# Calculate the daily new cases
+dead_case_df1 <- dead_case_df %>%
+  group_by(State) %>%
+  mutate(new_cases = value_sum - lag(value_sum, default = 0))
+
+# Convert date column to Date format
+dead_case_df1$date <- as.Date(con_case_df1$date)
+
+# Filter data for DC
+dead_case_df2 <- subset(dead_case_df1, State == 'DC')
+
+# Visualize the plot
+gg<-ggplot(data = dead_case_df2, aes(x = date, y = new_cases)) +
+  geom_line(colour = "#5a3196") +
+  labs(x = "Date", y = "Dead Cases", title = "Trend of Dead COVID-19 Cases in DC") +
+  theme_minimal() 
+
+plotly_gg <- ggplotly(gg)
+plotly_gg
+```
+
+Examining Washington D.C. as an example, we discern intriguing patterns in the trajectory of COVID-19 fatalities. In early 2020, a notable peak in deaths is observed, reflecting the initial surge of the pandemic. However, by July 2020, a discernible decline in fatalities begins, indicative of successful public health interventions and increased awareness. Despite this overall decline, intermittent peaks in January 2021, January 2022, and April 2022 punctuate the trend, suggesting periodic spikes in mortality rates. Despite these fluctuations, the overarching trend demonstrates a gradual decrease in fatalities over time, underscoring the effectiveness of ongoing mitigation strategies and vaccination efforts.
+
+# 3. COVID-19 Hospitalization Number
+
+The visualization is created by Rshiny, you can check the interactive app [here](https://jw2104.shinyapps.io/Final_project/).
+
+
+![](Pics/hos1.jpg)
+You have the flexibility to choose the specific state, year, and month you wish to explore, as well as the variables you'd like to visualize in the figure.
+
+![](Pics/hos2.jpg)
+You can find descriptive information regarding the hospitalization bed capacity in Washington D.C. and other states as well, including the total number of inpatient beds, as well as the utilization rates for both general inpatient beds and those specifically allocated for COVID-19 patients.
+
+# 4. Economic Indicators (GDP Per Capita & Unemployment Rate)
+
+### GDP Per Capita
+
+```{r, message=FALSE,warning=FALSE}
+gdp <- read_csv('Datasets/gdp.csv')
+
+# Convert DATE column from m/d/yy format to Date object and reformat to "Year" only for simplicity
+gdp$DATE <- format(mdy(gdp$DATE), "%Y/%m/%d")
+
+# Convert GDP column to numeric (floating-point) format if not already
+gdp$GDP <- as.numeric(gdp$GDP)
+
+# Visualize the plot using ggplot2
+gg <- ggplot(data = gdp, aes(x = DATE, y = GDP, group = 1)) +  # 'group = 1' ensures the line plot considers all points
+  geom_line(colour = "#5a3196") +  # Use geom_line for line plot
+  geom_point(colour = "#5a3196") +  # Optional: add points on top of the line
+  labs(x = "Year", y = "GDP Per Capita", title = "Trend of GDP Per Capita Over Years in US") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate x-axis labels to prevent overlap
+
+# Convert ggplot object to plotly for interactive plotting
+plotly_gg <- ggplotly(gg)
+
+# Display the plotly object
+plotly_gg
+
+
+```
+ 
+We observe a consistent annual increase in GDP per capita in the United States in the most of time. But there is a sudden decrease in the second quarter in 2020, which is mainly caused by COVID-19. After that period, the GDP per capita began to recover and keep increasing consistently.
+ 
+### Unemployment Rate
+
+```{r, message=FALSE,warning=FALSE}
+unemp <- read_csv('Datasets/unemployment.csv')
+key_cols <- c("Location")
+value_cols <- setdiff(names(unemp), key_cols)
+unemp1 <- pivot_longer(
+  unemp,
+  cols = value_cols,
+  names_to = "Time",
+  values_to = "Unemployment"
+)
+
+# Convert Time column to Date format
+unemp1$Time <- as.Date(paste0(unemp1$Time, "-01"))
+
+# Convert Unemployment column to numeric (floating-point) format
+unemp1$Unemployment <- as.numeric(unemp1$Unemployment)
+
+# Focus on US
+unemp2 <- unemp1[unemp1$Location =='United States',]
+
+# Visualize the plot
+gg <- ggplot(data = unemp2, aes(x = Time, y = Unemployment)) +
+  geom_point() +
+  geom_line(colour = "#5a3196") +
+  labs(x = "Year", y = "Unemployment Rate", title = "Trend of Unemployment Rate by Month in US") +
+  theme_minimal() 
+
+plotly_gg <- ggplotly(gg)
+plotly_gg
+
+```
+
+Analyzing the unemployment rate data in the US, a notable spike is observed after April 2020, marked as a distinct cutoff point in the plot. This sudden increase coincides with the onset of the pandemic outbreak, suggesting a correlation between the two events. Subsequently, post-April 2020, the unemployment rate gradually declined, eventually stabilizing by December 2021. Notably, this stabilization brings the unemployment rate close to pre-pandemic levels, indicating a gradual recovery in the labor market.
+
+# 5. Medical Corporation (Pfizer) Stock Price
+
+```{r, message=FALSE,warning=FALSE}
+# Set options to suppress warnings
+options("getSymbols.warning4.0" = FALSE)
+options("getSymbols.yahoo.warning" = FALSE)
+
+# Define the tickers
+tickers <- c("PFE")
+
+# Loop through tickers to get stock data
+for (ticker in tickers) {
+  getSymbols(ticker,
+             from = "2020-01-01",
+             to = "2024-01-01")
+}
+
+# Create a data frame with adjusted closing prices
+stock <- data.frame(date = index(PFE), value = Ad(PFE))
+
+# Visualize the plot
+gg <- ggplot(data = stock, aes(x = date, y = PFE.Adjusted)) +
+  geom_line(colour = "#5a3196") +
+  labs(x = "Date", y = "Adjusted Price", title = "Trend of Pfizer Stock Price (2020-2024)") +
+  theme_minimal() 
+
+plotly_gg <- ggplotly(gg)
+plotly_gg
+```
+
+Analyzing the fluctuations in Pfizer's stock price, we observe a discernible pattern linked to the COVID-19 pandemic. Initially, during the onset of the pandemic, the stock price experienced a decline, reflecting the uncertainties surrounding the medical corporation's operations amidst the global health crisis. However, a significant shift occurred post-August 2021, likely attributable to the widespread adoption of Pfizer's COVID-19 vaccine. This surge in demand propelled the stock price to higher levels. Subsequently, starting March 2023, a noticeable downtrend emerges, possibly indicating waning interest and widespread adoption of vaccination. This sustained decline underscores a shift in market dynamics and investor sentiment towards Pfizer's products, necessitating a deeper examination of the factors driving this trend.
+
+# 6. Party Support Rate
+
+```{r, message=FALSE,warning=FALSE}
+demo <- read_excel('Datasets/party.xlsx',sheet = 'Democrat')
+inde <- read_excel('Datasets/party.xlsx',sheet = 'Independent')
+rep <- read_excel('Datasets/party.xlsx',sheet = 'Republican')
+
+# Transform the wide dataframe into a long dataframe
+key_cols <- c("Attitude")
+value_cols <- setdiff(names(demo), key_cols)
+demo1 <- pivot_longer(
+  demo,
+  cols = value_cols,
+  names_to = "Time",
+  values_to = "democrat"
+)
+
+inde1 <- pivot_longer(
+  inde,
+  cols = value_cols,
+  names_to = "Time",
+  values_to = "independent"
+)
+
+rep1 <- pivot_longer(
+  rep,
+  cols = value_cols,
+  names_to = "Time",
+  values_to = "republican"
+)
+
+# Combine these three datasets together
+combined_data <- full_join(demo1, inde1, by = c("Time", "Attitude")) %>%
+  full_join(rep1, by = c("Time", "Attitude"))
+
+# Convert date column to Date format
+combined_data$Time <- as.Date(combined_data$Time)
+
+# Visualize the plot
+gg <- ggplot(combined_data, aes(x = Time, y = democrat, color = Attitude)) +
+  geom_line() +
+  labs(title = "Attitudes on Democratic Over Time", x = "Time", y = "Percentage") +
+  theme_minimal()
+
+plotly_gg <- ggplotly(gg)
+plotly_gg
+```
+
+Utilizing the Democratic attitude as a focal point for our visualization, we observe the evolving sentiments towards the Democratic party over the course of the pandemic. Upon analysis, the plot reveals nuanced fluctuations in attitudes over time. However, an overarching trend of significant increase or decrease in each attitude is not readily discernible from this visualization.
+
+

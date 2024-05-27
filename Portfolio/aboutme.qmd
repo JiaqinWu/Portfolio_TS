@@ -1,0 +1,91 @@
+---
+title: "About Me"
+output: rmdformats::material
+editor: 
+  markdown: 
+    wrap: 72
+---
+
+**Jiaqin Wu**\
+Phone: (703) 294-9099\
+Email: jw2104\@georgetown.edu\
+GitHub: [GitHub Link](https://github.com/JiaqinWu)\
+LinkedIn: [LinkedIn Profile](https://www.linkedin.com/in/jiaqin-wu-0315b6243/)[![](Pics/IMG_5864.jpeg)]{.aside}
+
+
+
+
+
+## Education
+
+**Georgetown University, McCourt School of Public Policy**\
+*Washington, DC*
+
+-   Master of Science, Data Science for Public Policy
+
+-   Expected Graduation: May 2024 - GPA: 3.9
+
+-   Specializations: Criminal Justice Policy, Data Analytics, Data Science, Housing & Neighborhoods, Public Health 
+
+
+**University of International Business and Economics**\
+*Beijing, China*
+
+-   Bachelor of Management, Customs Administration
+
+-   Graduated June 2022
+
+
+## Experience
+
+**Center for Global Health Practice and Impact, Georgetown University**\
+*Washington, DC*\
+*Data Scientist Assistant*\
+*March 2023-- Present*
+
+-   Developed pipeline for data cleaning and transformation using Pandas on 20K patients data from **SQL**.
+
+-   Built predictive models for HIV treatment status using techniques like **Logistic Regression**, **Random Forest**, **XGBoost**, **SVM**, and **Neural Network** algorithm, and achieved the highest accuracy rate of 91.12\% with the XGBoost model.
+
+-   Utilized **Multinomial Logistic Regression** algorithm to investigate the factors contributing to the concordance or discordance of IPV behavior reports within couples.
+
+-   Utilized **Logistic Regression** algorithm to analyze factors impacting patient retention and virological status, visualizing correlations and offering strategic insights for policymakers.
+
+-   Enhanced the Haiti Team's analytical capabilities by developing **Dashboards** to present the visualization of descriptive analyses and use machine learning model to predict patients' treatment status, enabling the team to derive actionable insights and make informed decisions.
+
+**Center for International Private Enterprise**\
+*Washington, DC*\
+*MEL (Monitor, Evaluation, Learning) Intern*\
+*September 2023-- December 2023*
+
+-   Designed and implemented a comprehensive pipeline for the CIPE database to efficiently manage and store project information.
+-   Organized subsets of data, including organizations, activities, and individuals, streamlining data retrieval and enhancing accessibility.
+-   Leveraged **Web Scraping** to collect extensive resource information from CIPE websites, ensuring up-to-date data availability.
+-   Conducted **Keyword Extraction** and performed in-depth **Statistical Analysis** at multiple levels, including topics, keywords, countries, and continents, providing valuable insights for strategic decision-making.
+
+**Institute for Policy Studies**\
+*Washington, DC*\
+*Data Analyst Intern*\
+*June 2023 -- August 2023*
+
+-   Utilized **Web Scraping** techniques to extract housing sales data from the Massachusetts Land Record website, employed data science techniques to classify the housing into different neighborhoods to conduct in-depth neighborhood-level research for valuable insights and policy suggestions on the feasibility of implementing an additional transfer tax on housing over 2M.
+
+-   Utilized data science to research the feasibility of expansion of Hanscom Private Airport (Boston), employed **API** to access and analyze flight records, conducted comprehensive research to gauge private flight ratios and its impact on air pollution, and delivered policy recommendations to the Boston government.
+
+## Relevant Projects
+
+-   **Project Name: Incarceration Rate/ Sentence Length Prediction -- Cook County**
+    -   Utilized county-level big data to conduct in-depth data exploration analysis and feature engineering.
+    -   Modeled the incarceration rate using **KNN**, **Decision Tree**, and **Random Forest** algorithms, and achieved the highest accuracy rate of 86.17\% using the Random Forest Model.
+    -   Modeled the sentence length using **KNN**, **Decision Tree**, and **Random Forest** algorithms, and achieved the lowest RMSE of 1.84 using the Random Forest Model.
+    -   Geographically categorized and mapped defendants at the neighborhood level based on their latitude and longitude coordinates to gain insights into their spatial distribution.
+    -   Results: [GitHub Repo](https://github.com/JiaqinWu/Python-Project_Crime)
+
+
+
+## Technical Summary
+
+**Tools/Software**: R Studio, R, Visual Studio Code, SQL, Tableau, PostgreSQL, AWS, MS Office Suite, Command Line, MySQL, ggplot2, Leaflet
+
+**Programming Languages**: R, Python, SQL, TensorFlow, Shell Scripting
+
